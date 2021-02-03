@@ -22,6 +22,7 @@ fn main() -> io::Result<()> {
         // TODO: handle error
     }
 
+    // TODO: configure editor (and use something more normal by default?)
     let status = Command::new("nvim")
         .args(
             tasks
