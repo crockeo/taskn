@@ -5,6 +5,7 @@ use std::str;
 
 use serde::Deserialize;
 use serde_json;
+use shellexpand;
 
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).collect::<Vec<String>>();
@@ -12,10 +13,10 @@ fn main() -> io::Result<()> {
     let output = String::from_utf8(output.stdout).unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
 
+    let root_dir = shellexpand::tilde("~/.taskn").into_owned();
     let status = Command::new("mkdir")
         .arg("-p")
-        // TODO: expand this tilde so it's not pointing to the verbatim ~ directory
-        .arg("~/.taskn")
+        .arg(&root_dir)
         .output()?
         .status;
     if !status.success() {
@@ -28,7 +29,7 @@ fn main() -> io::Result<()> {
             tasks
                 .into_iter()
                 .filter(|task| task.status.is_active())
-                .map(|task| format!("~/.taskn/{}.md", task.uuid))
+                .map(|task| format!("{}/{}.md", root_dir, task.uuid))
                 .collect::<Vec<String>>(),
         )
         .status()?;
