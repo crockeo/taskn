@@ -13,7 +13,6 @@ fn main() -> io::Result<()> {
     let args = env::args().skip(1).collect::<Vec<String>>();
     let output = Command::new("task")
         .args(args)
-        .arg("(status:pending or status:waiting)")
         .arg("export")
         .output()?;
     let output = String::from_utf8(output.stdout).unwrap();
