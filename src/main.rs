@@ -12,10 +12,8 @@ use shellexpand;
 fn main() -> io::Result<()> {
     let args = env::args().skip(1).collect::<Vec<String>>();
     let output = Command::new("task")
-        .arg("status:pending")
-        .arg("or")
-        .arg("status:waiting")
         .args(args)
+        .arg("(status:pending or status:waiting)")
         .arg("export")
         .output()?;
     let output = String::from_utf8(output.stdout).unwrap();
@@ -61,7 +59,8 @@ fn main() -> io::Result<()> {
                     .arg(&task.uuid)
                     .arg("modify")
                     .arg("+taskn")
-                    .status()?,
+                    .output()?
+                    .status,
             );
         } else if !has_note && has_tag {
             status = Some(
@@ -69,7 +68,8 @@ fn main() -> io::Result<()> {
                     .arg(&task.uuid)
                     .arg("modify")
                     .arg("-taskn")
-                    .status()?,
+                    .output()?
+                    .status,
             );
         }
         if let Some(status) = status {
@@ -91,6 +91,8 @@ struct Task {
 
 impl Task {
     fn has_note<P: AsRef<Path>>(&self, root_dir: P) -> io::Result<bool> {
+        // if there's only a newline in a file, then this will return true even though there's
+        // effectively not a note
         match metadata(self.path(root_dir)) {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
