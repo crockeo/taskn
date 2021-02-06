@@ -31,8 +31,13 @@ fn main() -> io::Result<()> {
         // TODO: handle error
     }
 
-    // TODO: configure editor (and use something more normal by default?)
-    let status = Command::new("nvim")
+    let editor = if let Ok(editor) = env::var("EDITOR") {
+        editor
+    } else {
+        // TODO: better default? emacs?
+        "vi".to_string()
+    };
+    let status = Command::new(editor)
         .args(
             tasks
                 .iter()
