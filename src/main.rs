@@ -1,7 +1,6 @@
 use std::env;
-use std::fs;
-use std::fs::metadata;
-use std::io;
+use std::fs::{create_dir_all, File};
+use std::io::{self, BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{exit, Command};
 use std::str;
@@ -24,7 +23,7 @@ fn main() -> io::Result<()> {
     .unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
 
-    if let Err(_) = fs::create_dir_all(&opt.root_dir) {
+    if let Err(_) = create_dir_all(&opt.root_dir) {
         eprintln!("Failed to create taskn directory '{}'", &opt.root_dir);
         exit(1)
     }
@@ -128,18 +127,22 @@ struct Task {
 
 impl Task {
     fn has_note(&self, opt: &Opt) -> io::Result<bool> {
-        // if there's only a newline in a file, then this will return true even though there's
-        // effectively not a note
-        match metadata(self.path(opt)) {
-            Err(e) => {
-                if e.kind() == io::ErrorKind::NotFound {
-                    return Ok(false);
-                } else {
-                    return Err(e);
+        // a lot of editors will keep an "empty" line at the top of a file, so a naive 'byte size
+        // == 0' check won't cut it.
+        //
+        // because we expect notes to be VERY small (on the order of KB at most), we can just scan
+        // to see if there's any non-whitespace.
+        //
+        // NOTE: if perf becomes an issue, this will become a good place to refactor
+        let reader = BufReader::new(File::open(self.path(opt))?);
+        for line in reader.lines() {
+            for c in line?.chars() {
+                if !c.is_whitespace() {
+                    return Ok(true);
                 }
             }
-            Ok(metadata) => Ok(metadata.len() > 0),
         }
+        Ok(false)
     }
 
     fn has_tag(&self) -> bool {
