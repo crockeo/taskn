@@ -2,7 +2,7 @@ use std::env;
 use std::fs::metadata;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, exit};
 use std::str;
 
 use serde::Deserialize;
@@ -23,7 +23,11 @@ fn main() -> io::Result<()> {
         .output()?
         .status;
     if !status.success() {
-        // TODO: handle error
+        eprintln!(
+            "Failed to create taskn directory '{}'",
+            &opt.root_dir
+        );
+        exit(1)
     }
 
     let status = Command::new(&opt.editor)
@@ -35,7 +39,11 @@ fn main() -> io::Result<()> {
         )
         .status()?;
     if !status.success() {
-        // TODO: handle error
+        eprintln!(
+            "Failed to open editor '{}' ",
+            &opt.editor,
+        );
+        exit(1)
     }
 
     for task in tasks.iter() {
@@ -65,7 +73,11 @@ fn main() -> io::Result<()> {
         }
         if let Some(status) = status {
             if !status.success() {
-                // TODO: handle error
+                eprintln!(
+                    "Failed to annotate task '{}' with taskn status",
+                    task.id,
+                );
+                exit(1)
             }
         }
     }
