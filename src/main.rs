@@ -1,7 +1,8 @@
 use std::env;
+use std::fs;
 use std::fs::metadata;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, exit};
 use std::str;
 
@@ -17,12 +18,7 @@ fn main() -> io::Result<()> {
     let output = String::from_utf8(output.stdout).unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
 
-    let status = Command::new("mkdir")
-        .arg("-p")
-        .arg(&opt.root_dir)
-        .output()?
-        .status;
-    if !status.success() {
+    if let Err(_) = fs::create_dir_all(&opt.root_dir) {
         eprintln!(
             "Failed to create taskn directory '{}'",
             &opt.root_dir
@@ -49,29 +45,22 @@ fn main() -> io::Result<()> {
     for task in tasks.iter() {
         let has_note = task.has_note(&opt)?;
         let has_tag = task.has_tag();
-        let mut status = None;
-        // TODO: maaaaybe switch this out with mostly the same implementation that varies by the
-        // argument?
-        if has_note && !has_tag {
-            status = Some(
-                Command::new("task")
-                    .arg(&task.uuid)
-                    .arg("modify")
-                    .arg("+taskn")
-                    .output()?
-                    .status,
-            );
+
+        let action = if has_note && !has_tag {
+            Some("+taskn")
         } else if !has_note && has_tag {
-            status = Some(
-                Command::new("task")
-                    .arg(&task.uuid)
-                    .arg("modify")
-                    .arg("-taskn")
-                    .output()?
-                    .status,
-            );
-        }
-        if let Some(status) = status {
+            Some("-taskn")
+        } else {
+            None
+        };
+
+        if let Some(action) = action {
+            let status = Command::new("task")
+                .arg(&task.uuid)
+                .arg("modify")
+                .arg(action)
+                .output()?
+                .status;
             if !status.success() {
                 eprintln!(
                     "Failed to annotate task '{}' with taskn status",
