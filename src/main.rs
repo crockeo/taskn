@@ -134,7 +134,14 @@ impl Task {
         // to see if there's any non-whitespace.
         //
         // NOTE: if perf becomes an issue, this will become a good place to refactor
-        let reader = BufReader::new(File::open(self.path(opt))?);
+        let file = match File::open(self.path(opt)) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return Ok(false)
+            },
+            Err(e) => return Err(e),
+            Ok(file) => file,
+        };
+        let reader = BufReader::new(file);
         for line in reader.lines() {
             for c in line?.chars() {
                 if !c.is_whitespace() {
