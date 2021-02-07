@@ -11,34 +11,26 @@ use shellexpand;
 use structopt::StructOpt;
 
 fn main() -> io::Result<()> {
-    let opt = Opt::from_args();
-    let output = Command::new("task").args(opt.args).arg("export").output()?;
+    let opt = ProtoOpt::from_args().into_opt();
+
+    let output = Command::new("task").args(&opt.args).arg("export").output()?;
     let output = String::from_utf8(output.stdout).unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
 
-    let root_dir = shellexpand::tilde(&opt.root_dir).into_owned();
-    let file_format = opt.file_format;
     let status = Command::new("mkdir")
         .arg("-p")
-        .arg(&root_dir)
+        .arg(&opt.root_dir)
         .output()?
         .status;
     if !status.success() {
         // TODO: handle error
     }
 
-    let editor = if let Some(editor) = opt.editor {
-        editor
-    } else if let Ok(editor) = env::var("EDITOR") {
-        editor
-    } else {
-        "vi".to_string()
-    };
-    let status = Command::new(editor)
+    let status = Command::new(&opt.editor)
         .args(
             tasks
                 .iter()
-                .map(|task| task.path(&root_dir, &file_format))
+                .map(|task| task.path(&opt))
                 .collect::<Vec<PathBuf>>(),
         )
         .status()?;
@@ -47,7 +39,7 @@ fn main() -> io::Result<()> {
     }
 
     for task in tasks.iter() {
-        let has_note = task.has_note(&root_dir, &file_format)?;
+        let has_note = task.has_note(&opt)?;
         let has_tag = task.has_tag();
         let mut status = None;
         // TODO: maaaaybe switch this out with mostly the same implementation that varies by the
@@ -83,15 +75,50 @@ fn main() -> io::Result<()> {
 
 #[derive(StructOpt)]
 #[structopt(name = "taskn", about = "Taskwarrior task annotation helper")]
-struct Opt {
+struct ProtoOpt {
+    /// The editor used to open task notes. If unset, taskn will attempt to use $EDITOR. If $EDITOR
+    /// is also unset, taskn will use vi.
+    #[structopt(long)]
     editor: Option<String>,
 
-    #[structopt(default_value = "md")]
+    /// The file format used for task notes.
+    #[structopt(long, default_value="md")]
     file_format: String,
 
-    #[structopt(default_value = "~/.taskn")]
+    /// The directory in which task notes are placed. If the directory does not already exist,
+    /// taskn will create it.
+    #[structopt(long, default_value="~/.taskn")]
     root_dir: String,
 
+    args: Vec<String>,
+}
+
+impl ProtoOpt {
+    fn into_opt(self) -> Opt {
+        let editor = if let Some(editor) = self.editor {
+            editor
+        } else if let Ok(editor) = env::var("EDITOR") {
+            editor
+        } else {
+            "vi".to_string()
+        };
+
+        let root_dir =
+            shellexpand::tilde(&self.root_dir).to_string();
+
+        Opt {
+            editor,
+            file_format: self.file_format,
+            root_dir,
+            args: self.args,
+        }
+    }
+}
+
+struct Opt {
+    editor: String,
+    file_format: String,
+    root_dir: String,
     args: Vec<String>,
 }
 
@@ -103,14 +130,13 @@ struct Task {
 }
 
 impl Task {
-    fn has_note<P: AsRef<Path>, U: AsRef<Path>>(
+    fn has_note(
         &self,
-        root_dir: P,
-        file_format: U,
+        opt: &Opt,
     ) -> io::Result<bool> {
         // if there's only a newline in a file, then this will return true even though there's
         // effectively not a note
-        match metadata(self.path(root_dir, file_format)) {
+        match metadata(self.path(opt)) {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
                     return Ok(false);
@@ -136,10 +162,10 @@ impl Task {
         }
     }
 
-    fn path<P: AsRef<Path>, U: AsRef<Path>>(&self, root_dir: P, file_format: U) -> PathBuf {
+    fn path(&self, opt: &Opt) -> PathBuf {
         PathBuf::new()
-            .join(root_dir.as_ref())
+            .join(&opt.root_dir)
             .join(&self.uuid)
-            .with_extension(file_format.as_ref())
+            .with_extension(&opt.file_format)
     }
 }
