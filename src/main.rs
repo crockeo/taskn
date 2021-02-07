@@ -3,7 +3,7 @@ use std::fs;
 use std::fs::metadata;
 use std::io;
 use std::path::PathBuf;
-use std::process::{Command, exit};
+use std::process::{exit, Command};
 use std::str;
 
 use serde::Deserialize;
@@ -14,15 +14,18 @@ use structopt::StructOpt;
 fn main() -> io::Result<()> {
     let opt = ProtoOpt::from_args().into_opt();
 
-    let output = Command::new("task").args(&opt.args).arg("export").output()?;
-    let output = String::from_utf8(output.stdout).unwrap();
+    let output = String::from_utf8(
+        Command::new("task")
+            .args(&opt.args)
+            .arg("export")
+            .output()?
+            .stdout,
+    )
+    .unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
 
     if let Err(_) = fs::create_dir_all(&opt.root_dir) {
-        eprintln!(
-            "Failed to create taskn directory '{}'",
-            &opt.root_dir
-        );
+        eprintln!("Failed to create taskn directory '{}'", &opt.root_dir);
         exit(1)
     }
 
@@ -35,10 +38,7 @@ fn main() -> io::Result<()> {
         )
         .status()?;
     if !status.success() {
-        eprintln!(
-            "Failed to open editor '{}' ",
-            &opt.editor,
-        );
+        eprintln!("Failed to open editor '{}' ", &opt.editor);
         exit(1)
     }
 
@@ -62,10 +62,7 @@ fn main() -> io::Result<()> {
                 .output()?
                 .status;
             if !status.success() {
-                eprintln!(
-                    "Failed to annotate task '{}' with taskn status",
-                    task.id,
-                );
+                eprintln!("Failed to annotate task '{}' with taskn status", task.id);
                 exit(1)
             }
         }
@@ -83,12 +80,12 @@ struct ProtoOpt {
     editor: Option<String>,
 
     /// The file format used for task notes.
-    #[structopt(long, default_value="md")]
+    #[structopt(long, default_value = "md")]
     file_format: String,
 
     /// The directory in which task notes are placed. If the directory does not already exist,
     /// taskn will create it.
-    #[structopt(long, default_value="~/.taskn")]
+    #[structopt(long, default_value = "~/.taskn")]
     root_dir: String,
 
     args: Vec<String>,
@@ -104,8 +101,7 @@ impl ProtoOpt {
             "vi".to_string()
         };
 
-        let root_dir =
-            shellexpand::tilde(&self.root_dir).to_string();
+        let root_dir = shellexpand::tilde(&self.root_dir).to_string();
 
         Opt {
             editor,
@@ -131,10 +127,7 @@ struct Task {
 }
 
 impl Task {
-    fn has_note(
-        &self,
-        opt: &Opt,
-    ) -> io::Result<bool> {
+    fn has_note(&self, opt: &Opt) -> io::Result<bool> {
         // if there's only a newline in a file, then this will return true even though there's
         // effectively not a note
         match metadata(self.path(opt)) {
