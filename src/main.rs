@@ -8,17 +8,16 @@ use std::str;
 use serde::Deserialize;
 use serde_json;
 use shellexpand;
+use structopt::StructOpt;
 
 fn main() -> io::Result<()> {
-    let args = env::args().skip(1).collect::<Vec<String>>();
-    let output = Command::new("task")
-        .args(args)
-        .arg("export")
-        .output()?;
+    let opt = Opt::from_args();
+    let output = Command::new("task").args(opt.args).arg("export").output()?;
     let output = String::from_utf8(output.stdout).unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
 
-    let root_dir = shellexpand::tilde("~/.taskn").into_owned();
+    let root_dir = shellexpand::tilde(&opt.root_dir).into_owned();
+    let file_format = opt.file_format;
     let status = Command::new("mkdir")
         .arg("-p")
         .arg(&root_dir)
@@ -28,17 +27,18 @@ fn main() -> io::Result<()> {
         // TODO: handle error
     }
 
-    let editor = if let Ok(editor) = env::var("EDITOR") {
+    let editor = if let Some(editor) = opt.editor {
+        editor
+    } else if let Ok(editor) = env::var("EDITOR") {
         editor
     } else {
-        // TODO: better default? emacs?
         "vi".to_string()
     };
     let status = Command::new(editor)
         .args(
             tasks
                 .iter()
-                .map(|task| task.path(&root_dir))
+                .map(|task| task.path(&root_dir, &file_format))
                 .collect::<Vec<PathBuf>>(),
         )
         .status()?;
@@ -47,7 +47,7 @@ fn main() -> io::Result<()> {
     }
 
     for task in tasks.iter() {
-        let has_note = task.has_note(&root_dir)?;
+        let has_note = task.has_note(&root_dir, &file_format)?;
         let has_tag = task.has_tag();
         let mut status = None;
         // TODO: maaaaybe switch this out with mostly the same implementation that varies by the
@@ -81,6 +81,20 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+#[derive(StructOpt)]
+#[structopt(name = "taskn", about = "Taskwarrior task annotation helper")]
+struct Opt {
+    editor: Option<String>,
+
+    #[structopt(default_value = "md")]
+    file_format: String,
+
+    #[structopt(default_value = "~/.taskn")]
+    root_dir: String,
+
+    args: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 struct Task {
     id: usize,
@@ -89,10 +103,14 @@ struct Task {
 }
 
 impl Task {
-    fn has_note<P: AsRef<Path>>(&self, root_dir: P) -> io::Result<bool> {
+    fn has_note<P: AsRef<Path>, U: AsRef<Path>>(
+        &self,
+        root_dir: P,
+        file_format: U,
+    ) -> io::Result<bool> {
         // if there's only a newline in a file, then this will return true even though there's
         // effectively not a note
-        match metadata(self.path(root_dir)) {
+        match metadata(self.path(root_dir, file_format)) {
             Err(e) => {
                 if e.kind() == io::ErrorKind::NotFound {
                     return Ok(false);
@@ -118,11 +136,10 @@ impl Task {
         }
     }
 
-    fn filename(&self) -> PathBuf {
-        PathBuf::new().join(&self.uuid).with_extension("md")
-    }
-
-    fn path<P: AsRef<Path>>(&self, root_dir: P) -> PathBuf {
-        PathBuf::new().join(root_dir).join(self.filename())
+    fn path<P: AsRef<Path>, U: AsRef<Path>>(&self, root_dir: P, file_format: U) -> PathBuf {
+        PathBuf::new()
+            .join(root_dir.as_ref())
+            .join(&self.uuid)
+            .with_extension(file_format.as_ref())
     }
 }
