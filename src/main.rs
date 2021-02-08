@@ -6,8 +6,6 @@ use std::process::{exit, Command};
 use std::str;
 
 use serde::Deserialize;
-use serde_json;
-use shellexpand;
 use structopt::StructOpt;
 
 fn main() -> io::Result<()> {
@@ -23,7 +21,7 @@ fn main() -> io::Result<()> {
     .unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
 
-    if let Err(_) = create_dir_all(&opt.root_dir) {
+    if create_dir_all(&opt.root_dir).is_err() {
         eprintln!("Failed to create taskn directory '{}'", &opt.root_dir);
         exit(1)
     }
@@ -156,7 +154,7 @@ impl Task {
         match &self.tags {
             None => false,
             Some(tags) => {
-                for tag in tags.into_iter() {
+                for tag in tags.iter() {
                     if tag == "taskn" {
                         return true;
                     }
