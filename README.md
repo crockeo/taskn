@@ -1,3 +1,14 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [taskn](#taskn)
+  - [Usage](#usage)
+  - [Why?](#why)
+  - [Contributing](#contributing)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # taskn
 
 `taskn` is a helper for [Taskwarrior](https://taskwarrior.org/) that makes associating tasks and
@@ -37,3 +48,10 @@ overhead whenever you want to associate a note by either:
 - Adding a special notation that means "generate a filename for this"
 
 I just decided to make the latter the default behavio because...well I just like it more.
+
+## Contributing
+
+Feel free to contribute! I can't promise I'll check this repo very often, but if you assign a PR to
+me I'll get around to it Eventually™. Before committing code make sure you install
+[pre-commit](https://pre-commit.com/) and set it up to
+[run on commit](https://pre-commit.com/#3-install-the-git-hook-scripts).
