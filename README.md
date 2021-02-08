@@ -4,6 +4,7 @@
 
 - [taskn](#taskn)
   - [Usage](#usage)
+    - [Options](#options)
   - [Why?](#why)
   - [Contributing](#contributing)
 
@@ -15,6 +16,12 @@
 notes super, super easy.
 
 ## Usage
+
+`taskn` opens up all of the notes exported by `task`
+when provided with the given arguments.
+For example, `taskn 1` will open task 1.
+`taskn status:pending` will open all pendings tasks.
+Etc.
 
 ```bash
 $ task
@@ -28,6 +35,21 @@ $ taskn 16
 ```
 
 By default, all files opened with taskn are in Markdown.
+
+### Options
+
+`--editor <editor>` &mdash;
+The editor used to open task notes.
+If unset, taskn will attempt to use $EDITOR.
+If $EDITOR is also unset, taskn will default to `vi`.
+
+`--file-format <file-format>` &mdash;
+The file format used for task notes [default: md].
+
+`--root-dir <root-dir>` &mdash;
+The directory in which task notes are placed.
+If the directory does not already exist,
+taskn will create it [default: ~/.taskn]
 
 ## Why?
 
