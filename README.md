@@ -19,9 +19,11 @@ notes super, super easy.
 
 `taskn` opens up all of the notes exported by `task`
 when provided with the given arguments.
-For example, `taskn 1` will open task 1.
-`taskn status:pending` will open all pendings tasks.
-Etc.
+For example:
+
+- `taskn 1` will open task 1's note.
+- `taskn status:pending` will open all pending tasks' notes.
+- `taskn +home` will open all tasks' notes with the tag `home`.
 
 ```bash
 $ task
