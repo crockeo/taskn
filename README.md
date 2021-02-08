@@ -71,7 +71,7 @@ overhead whenever you want to associate a note by either:
 - Explicitly annotating the task with the note you want to open
 - Adding a special notation that means "generate a filename for this"
 
-I just decided to make the latter the default behavio because...well I just like it more.
+I just decided to make the latter the default behavior because...well I just like it more.
 
 ## Contributing
 
