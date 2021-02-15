@@ -17,6 +17,11 @@ mod commands;
 fn main() -> io::Result<()> {
     let opt = ProtoOpt::from_args().into_opt();
 
+    if opt.command == "reminder" {
+        commands::remind::set_reminders::<commands::remind::MacReminder, _>(opt.args);
+        return Ok(());
+    }
+
     let output = String::from_utf8(
         Command::new("task")
             .args(&opt.args)
@@ -91,6 +96,9 @@ struct ProtoOpt {
     #[structopt(long, default_value = "~/.taskn")]
     root_dir: String,
 
+    #[structopt(long, default_value = "edit")]
+    command: String,
+
     args: Vec<String>,
 }
 
@@ -110,6 +118,7 @@ impl ProtoOpt {
             editor,
             file_format: self.file_format,
             root_dir,
+            command: self.command,
             args: self.args,
         }
     }
@@ -119,6 +128,7 @@ struct Opt {
     editor: String,
     file_format: String,
     root_dir: String,
+    command: String,
     args: Vec<String>,
 }
 
@@ -128,7 +138,7 @@ struct Task {
     description: String,
     uuid: String,
     tags: Option<Vec<String>>,
-    wait: ParsableDateTime,
+    wait: Option<ParsableDateTime>,
 }
 
 impl Task {

@@ -4,6 +4,7 @@
 /// This module is separated into two conceptual parts:
 ///   1. The OS / program-specific reminder interface
 ///   2. The general taskwarrior reminder interface
+use std::ffi::OsStr;
 use std::io;
 use std::process::{self, Command};
 
@@ -47,7 +48,7 @@ end", date = datetime.format("%Y-%m-%d"), time = datetime.format("%H:%M"), title
     }
 }
 
-pub fn set_reminders<R: Reminder>(taskwarrior_args: Vec<&str>) -> io::Result<()> {
+pub fn set_reminders<R: Reminder, S: AsRef<OsStr>>(taskwarrior_args: Vec<S>) -> io::Result<()> {
     let output = String::from_utf8(
         Command::new("task")
             .args(taskwarrior_args)
@@ -59,11 +60,15 @@ pub fn set_reminders<R: Reminder>(taskwarrior_args: Vec<&str>) -> io::Result<()>
     .unwrap();
     let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
     for task in tasks.into_iter() {
+        let wait = match task.wait {
+            None => continue,
+            Some(wait) => wait,
+        };
         let has_reminder = task
             .tags
             .map_or(false, |tags| tags.contains(&"reminder".to_string()));
         if !has_reminder {
-            R::add_reminder(&task.uuid, &task.description, task.wait.0)?;
+            R::add_reminder(&task.uuid, &task.description, wait.0)?;
         }
     }
 
