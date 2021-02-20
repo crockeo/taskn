@@ -3,7 +3,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{exit, Command};
 
-use crate::Opt;
+use crate::opt::Opt;
 use crate::Task;
 
 pub fn edit_notes(opt: Opt) -> io::Result<()> {

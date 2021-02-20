@@ -1,4 +1,6 @@
-use std::env;
+mod commands;
+mod opt;
+
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
@@ -10,12 +12,11 @@ use chrono::offset::Local;
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use serde::de;
 use serde::Deserialize;
-use structopt::StructOpt;
 
-mod commands;
+use opt::Opt;
 
 fn main() -> io::Result<()> {
-    let opt = ProtoOpt::from_args().into_opt();
+    let opt = Opt::from_args();
 
     if opt.command == "reminder" {
         commands::remind::set_reminders::<commands::remind::MacReminder, _>(opt.args)?;
@@ -28,59 +29,6 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
-}
-
-#[derive(StructOpt)]
-#[structopt(name = "taskn", about = "Taskwarrior task annotation helper")]
-struct ProtoOpt {
-    /// The editor used to open task notes. If unset, taskn will attempt to use $EDITOR. If $EDITOR
-    /// is also unset, taskn will use vi.
-    #[structopt(long)]
-    editor: Option<String>,
-
-    /// The file format used for task notes.
-    #[structopt(long, default_value = "md")]
-    file_format: String,
-
-    /// The directory in which task notes are placed. If the directory does not already exist,
-    /// taskn will create it.
-    #[structopt(long, default_value = "~/.taskn")]
-    root_dir: String,
-
-    #[structopt(long, default_value = "edit")]
-    command: String,
-
-    args: Vec<String>,
-}
-
-impl ProtoOpt {
-    fn into_opt(self) -> Opt {
-        let editor = if let Some(editor) = self.editor {
-            editor
-        } else if let Ok(editor) = env::var("EDITOR") {
-            editor
-        } else {
-            "vi".to_string()
-        };
-
-        let root_dir = shellexpand::tilde(&self.root_dir).to_string();
-
-        Opt {
-            editor,
-            file_format: self.file_format,
-            root_dir,
-            command: self.command,
-            args: self.args,
-        }
-    }
-}
-
-pub struct Opt {
-    editor: String,
-    file_format: String,
-    root_dir: String,
-    command: String,
-    args: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
