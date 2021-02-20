@@ -9,7 +9,6 @@ use std::io;
 use std::process::{self, Command};
 
 use chrono::{DateTime, Local};
-use serde_json;
 
 use crate::taskwarrior::Task;
 
