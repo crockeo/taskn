@@ -1,4 +1,5 @@
 use std::env;
+use std::str::FromStr;
 
 use structopt::StructOpt;
 
@@ -20,8 +21,9 @@ struct ProtoOpt {
     root_dir: String,
 
     #[structopt(long, default_value = "edit")]
-    command: String,
+    command: Command,
 
+    /// Any remaining arguments are passed along to taskwarrior while selecting tasks.
     args: Vec<String>,
 }
 
@@ -29,7 +31,7 @@ pub struct Opt {
     pub editor: String,
     pub file_format: String,
     pub root_dir: String,
-    pub command: String,
+    pub command: Command,
     pub args: Vec<String>,
 }
 
@@ -56,5 +58,23 @@ impl Opt {
 
     pub fn from_args() -> Self {
         Self::from_proto_opt(ProtoOpt::from_args())
+    }
+}
+
+pub enum Command {
+    Edit,
+    Remind,
+}
+
+impl FromStr for Command {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use Command::*;
+        match s {
+            "edit" => Ok(Edit),
+            "remind" => Ok(Remind),
+            _ => Err(format!("failed to parse Command from '{}'", s)),
+        }
     }
 }
