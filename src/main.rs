@@ -1,9 +1,9 @@
 use std::env;
 use std::fmt;
-use std::fs::{create_dir_all, File};
+use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::path::PathBuf;
-use std::process::{exit, Command};
+use std::process::exit;
 use std::str;
 
 use chrono::offset::Local;
@@ -18,62 +18,13 @@ fn main() -> io::Result<()> {
     let opt = ProtoOpt::from_args().into_opt();
 
     if opt.command == "reminder" {
-        commands::remind::set_reminders::<commands::remind::MacReminder, _>(opt.args);
+        commands::remind::set_reminders::<commands::remind::MacReminder, _>(opt.args)?;
         return Ok(());
-    }
-
-    let output = String::from_utf8(
-        Command::new("task")
-            .args(&opt.args)
-            .arg("export")
-            .output()?
-            .stdout,
-    )
-    .unwrap();
-    let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
-
-    if create_dir_all(&opt.root_dir).is_err() {
-        eprintln!("Failed to create taskn directory '{}'", &opt.root_dir);
-        exit(1)
-    }
-
-    let status = Command::new(&opt.editor)
-        .args(
-            tasks
-                .iter()
-                .map(|task| task.path(&opt))
-                .collect::<Vec<PathBuf>>(),
-        )
-        .status()?;
-    if !status.success() {
-        eprintln!("Failed to open editor '{}' ", &opt.editor);
-        exit(1)
-    }
-
-    for task in tasks.iter() {
-        let has_note = task.has_note(&opt)?;
-        let has_tag = task.has_tag();
-
-        let action = if has_note && !has_tag {
-            Some("+taskn")
-        } else if !has_note && has_tag {
-            Some("-taskn")
-        } else {
-            None
-        };
-
-        if let Some(action) = action {
-            let status = Command::new("task")
-                .arg(&task.uuid)
-                .arg("modify")
-                .arg(action)
-                .output()?
-                .status;
-            if !status.success() {
-                eprintln!("Failed to annotate task '{}' with taskn status", task.id);
-                exit(1)
-            }
-        }
+    } else if opt.command == "edit" {
+        commands::edit::edit_notes(opt)?;
+    } else {
+        eprintln!("Unrecognized command '{}'", opt.command);
+        exit(1);
     }
 
     Ok(())
@@ -124,7 +75,7 @@ impl ProtoOpt {
     }
 }
 
-struct Opt {
+pub struct Opt {
     editor: String,
     file_format: String,
     root_dir: String,
