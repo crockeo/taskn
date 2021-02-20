@@ -25,28 +25,6 @@ struct ProtoOpt {
     args: Vec<String>,
 }
 
-impl ProtoOpt {
-    fn into_opt(self) -> Opt {
-        let editor = if let Some(editor) = self.editor {
-            editor
-        } else if let Ok(editor) = env::var("EDITOR") {
-            editor
-        } else {
-            "vi".to_string()
-        };
-
-        let root_dir = shellexpand::tilde(&self.root_dir).to_string();
-
-        Opt {
-            editor,
-            file_format: self.file_format,
-            root_dir,
-            command: self.command,
-            args: self.args,
-        }
-    }
-}
-
 pub struct Opt {
     pub editor: String,
     pub file_format: String,

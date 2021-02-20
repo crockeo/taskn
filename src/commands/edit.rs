@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::{exit, Command};
 
 use crate::opt::Opt;
-use crate::Task;
+use crate::taskwarrior::Task;
 
 pub fn edit_notes(opt: Opt) -> io::Result<()> {
     let output = String::from_utf8(

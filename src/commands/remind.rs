@@ -11,7 +11,7 @@ use std::process::{self, Command};
 use chrono::{DateTime, Local};
 use serde_json;
 
-use crate::Task;
+use crate::taskwarrior::Task;
 
 pub fn set_reminders<R: Reminder, S: AsRef<OsStr>>(taskwarrior_args: Vec<S>) -> io::Result<()> {
     let output = String::from_utf8(
