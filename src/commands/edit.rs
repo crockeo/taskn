@@ -1,5 +1,5 @@
-use std::fs::create_dir_all;
-use std::io;
+use std::fs::{create_dir_all, File};
+use std::io::{self, BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{exit, Command};
 
@@ -26,7 +26,7 @@ pub fn edit_notes(opt: Opt) -> io::Result<()> {
         .args(
             tasks
                 .iter()
-                .map(|task| task.path(&opt))
+                .map(|task| task_path(&opt, task))
                 .collect::<Vec<PathBuf>>(),
         )
         .status()?;
@@ -36,8 +36,8 @@ pub fn edit_notes(opt: Opt) -> io::Result<()> {
     }
 
     for task in tasks.iter() {
-        let has_note = task.has_note(&opt)?;
-        let has_tag = task.has_tag();
+        let has_note = task_has_note(&opt, task)?;
+        let has_tag = task.has_tag("taskn");
 
         let action = if has_note && !has_tag {
             Some("+taskn")
@@ -62,4 +62,35 @@ pub fn edit_notes(opt: Opt) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn task_has_note(opt: &Opt, task: &Task) -> io::Result<bool> {
+    // a lot of editors will keep an "empty" line at the top of a file, so a naive 'byte size
+    // == 0' check won't cut it.
+    //
+    // because we expect notes to be VERY small (on the order of KB at most), we can just scan
+    // to see if there's any non-whitespace.
+    //
+    // NOTE: if perf becomes an issue, this will become a good place to refactor
+    let file = match File::open(task_path(opt, task)) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+        Ok(file) => file,
+    };
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        for c in line?.chars() {
+            if !c.is_whitespace() {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn task_path(opt: &Opt, task: &Task) -> PathBuf {
+    PathBuf::new()
+        .join(&opt.root_dir)
+        .join(&task.uuid)
+        .with_extension(&opt.file_format)
 }

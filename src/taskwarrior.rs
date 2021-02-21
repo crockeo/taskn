@@ -1,14 +1,9 @@
 use std::fmt;
-use std::fs::File;
-use std::io::{self, BufRead, BufReader};
-use std::path::PathBuf;
 
 use chrono::offset::Local;
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use serde::de;
 use serde::Deserialize;
-
-use crate::opt::Opt;
 
 #[derive(Debug, Deserialize)]
 pub struct Task {
@@ -20,49 +15,20 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn has_note(&self, opt: &Opt) -> io::Result<bool> {
-        // a lot of editors will keep an "empty" line at the top of a file, so a naive 'byte size
-        // == 0' check won't cut it.
-        //
-        // because we expect notes to be VERY small (on the order of KB at most), we can just scan
-        // to see if there's any non-whitespace.
-        //
-        // NOTE: if perf becomes an issue, this will become a good place to refactor
-        let file = match File::open(self.path(opt)) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
-            Err(e) => return Err(e),
-            Ok(file) => file,
-        };
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            for c in line?.chars() {
-                if !c.is_whitespace() {
-                    return Ok(true);
-                }
-            }
-        }
-        Ok(false)
-    }
-
-    pub fn has_tag(&self) -> bool {
+    /// Determines whether or not the [Task] contains a tag with the provided value.
+    pub fn has_tag<S: AsRef<str>>(&self, s: S) -> bool {
         match &self.tags {
             None => false,
             Some(tags) => {
-                for tag in tags.iter() {
-                    if tag == "taskn" {
+                let s = s.as_ref();
+                for tag in tags.into_iter() {
+                    if tag == s {
                         return true;
                     }
                 }
                 false
             }
         }
-    }
-
-    pub fn path(&self, opt: &Opt) -> PathBuf {
-        PathBuf::new()
-            .join(&opt.root_dir)
-            .join(&self.uuid)
-            .with_extension(&opt.file_format)
     }
 }
 
