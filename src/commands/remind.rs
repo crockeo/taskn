@@ -7,7 +7,7 @@ use crate::taskwarrior::Task;
 pub fn execute(opt: Opt) -> io::Result<()> {
     let mut taskwarrior_args = opt.args;
     taskwarrior_args.push("+remindme".to_string());
-    println!("{:?}", taskwarrior_args);
+    taskwarrior_args.push("(status:pending or status:waiting)".to_string());
     let tasks = Task::get(taskwarrior_args.into_iter())?;
 
     for task in tasks.iter() {
@@ -69,8 +69,6 @@ tell app \"Reminders\"
     end
 end",
     );
-
-    println!("{}", osascript);
 
     Command::new("osascript")
         .arg("-e")
