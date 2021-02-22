@@ -18,6 +18,14 @@ pub fn execute(opt: Opt) -> io::Result<()> {
 }
 
 fn add_reminder(task: &Task) -> io::Result<()> {
+    // if you're reading this, i hate this function as much as you do.
+    //
+    // i'm looking into alternatives, like using bindgen on Objective-C
+    // (see: https://rust-lang.github.io/rust-bindgen/objc.html)
+    // to directly interface with the macOS EventKit
+    // (see: https://developer.apple.com/documentation/eventkit?language=objc)
+    //
+    // just bear with me as i get this sorted out.
     let mut osascript = String::new();
     if let Some(wait) = &task.wait {
         let wait = wait.0;
