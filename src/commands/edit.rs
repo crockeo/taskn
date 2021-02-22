@@ -7,15 +7,7 @@ use crate::opt::Opt;
 use crate::taskwarrior::Task;
 
 pub fn edit_notes(opt: Opt) -> io::Result<()> {
-    let output = String::from_utf8(
-        Command::new("task")
-            .args(&opt.args)
-            .arg("export")
-            .output()?
-            .stdout,
-    )
-    .unwrap();
-    let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
+    let tasks = Task::get(opt.args.iter())?;
 
     if create_dir_all(&opt.root_dir).is_err() {
         eprintln!("Failed to create taskn directory '{}'", &opt.root_dir);

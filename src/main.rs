@@ -11,8 +11,6 @@ fn main() -> io::Result<()> {
 
     match opt.command {
         Command::Edit => commands::edit::edit_notes(opt),
-        Command::Remind => {
-            commands::remind::set_reminders::<commands::remind::MacReminder, _>(opt.args)
-        }
+        Command::Remind => commands::remind::set_reminders::<commands::remind::MacReminder>(opt),
     }
 }

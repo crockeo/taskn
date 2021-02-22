@@ -1,4 +1,6 @@
 use std::fmt;
+use std::io;
+use std::process::Command;
 
 use chrono::offset::Local;
 use chrono::{DateTime, NaiveDateTime, TimeZone};
@@ -15,6 +17,34 @@ pub struct Task {
 }
 
 impl Task {
+    pub fn get<'a, S: ToString, I: Iterator<Item = S>>(
+        taskwarrior_args: I,
+    ) -> io::Result<Vec<Self>> {
+        let taskwarrior_args = taskwarrior_args
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        let output = Command::new("task")
+            .args(taskwarrior_args)
+            .arg("export")
+            .output()?;
+
+        let output = match String::from_utf8(output.stdout) {
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "taskwarrior output invalid utf8",
+                ))
+            }
+            Ok(output) => output,
+        };
+
+        match serde_json::from_str::<Vec<Self>>(&output) {
+            // TODO: report error here
+            Err(_) => Err(io::Error::new(io::ErrorKind::InvalidData, "")),
+            Ok(tasks) => Ok(tasks),
+        }
+    }
+
     /// Determines whether or not the [Task] contains a tag with the provided value.
     pub fn has_tag<S: AsRef<str>>(&self, s: S) -> bool {
         match &self.tags {

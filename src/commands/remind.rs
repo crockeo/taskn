@@ -4,25 +4,19 @@
 /// This module is separated into two conceptual parts:
 ///   1. The OS / program-specific reminder interface
 ///   2. The general taskwarrior reminder interface
-use std::ffi::OsStr;
 use std::io;
 use std::process::{self, Command};
 
 use chrono::{DateTime, Local};
 
+use crate::opt::Opt;
 use crate::taskwarrior::Task;
 
-pub fn set_reminders<R: Reminder, S: AsRef<OsStr>>(taskwarrior_args: Vec<S>) -> io::Result<()> {
-    let output = String::from_utf8(
-        Command::new("task")
-            .args(taskwarrior_args)
-            .arg("+WAITING")
-            .arg("export")
-            .output()?
-            .stdout,
-    )
-    .unwrap();
-    let tasks = serde_json::from_str::<Vec<Task>>(&output).unwrap();
+pub fn set_reminders<R: Reminder>(opt: Opt) -> io::Result<()> {
+    let mut taskwarrior_args = opt.args;
+    taskwarrior_args.push("+WAITING".to_string());
+    let tasks = Task::get(taskwarrior_args.into_iter())?;
+
     for task in tasks.into_iter() {
         let wait = match task.wait {
             None => continue,
@@ -80,6 +74,6 @@ mod tests {
 
     #[test]
     fn test_set_reminders() -> io::Result<()> {
-        set_reminders::<MacReminder, _>(vec!["24"])
+        set_reminders::<MacReminder>(vec!["24"])
     }
 }
