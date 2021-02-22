@@ -4,13 +4,14 @@ mod taskwarrior;
 
 use std::io;
 
+use commands::{edit, remind};
 use opt::{Command, Opt};
 
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
 
     match opt.command {
-        Command::Edit => commands::edit::edit_notes(opt),
-        Command::Remind => commands::remind::set_reminders::<commands::remind::MacReminder>(opt),
+        Command::Edit => edit::execute(opt),
+        Command::Remind => remind::execute(opt),
     }
 }

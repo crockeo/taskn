@@ -1,79 +1,73 @@
-/// Provides a taskn command that, on macOS, automatically generates reminders for tasks that are
-/// set to be +WAITING and +DUE.
-///
-/// This module is separated into two conceptual parts:
-///   1. The OS / program-specific reminder interface
-///   2. The general taskwarrior reminder interface
 use std::io;
-use std::process::{self, Command};
-
-use chrono::{DateTime, Local};
+use std::process::Command;
 
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
 
-pub fn set_reminders<R: Reminder>(opt: Opt) -> io::Result<()> {
+pub fn execute(opt: Opt) -> io::Result<()> {
     let mut taskwarrior_args = opt.args;
-    taskwarrior_args.push("+WAITING".to_string());
+    taskwarrior_args.push("+remindme".to_string());
+    println!("{:?}", taskwarrior_args);
     let tasks = Task::get(taskwarrior_args.into_iter())?;
 
-    for task in tasks.into_iter() {
-        let wait = match task.wait {
-            None => continue,
-            Some(wait) => wait,
-        };
-        let has_reminder = task
-            .tags
-            .map_or(false, |tags| tags.contains(&"reminder".to_string()));
-        if !has_reminder {
-            R::add_reminder(&task.uuid, &task.description, wait.0)?;
-        }
+    for task in tasks.iter() {
+        add_reminder(task)?;
     }
 
     Ok(())
 }
 
-pub trait Reminder {
-    fn add_reminder(uuid: &str, title: &str, datetime: DateTime<Local>) -> io::Result<()>;
-}
+fn add_reminder(task: &Task) -> io::Result<()> {
+    let mut osascript = String::new();
+    if let Some(wait) = &task.wait {
+        let wait = wait.0;
+        let date_str = wait.format("%Y-%m-%d");
+        let time_str = wait.format("%H:%M");
 
-/// Provides an implementation of [Reminder] based on macOS's Reminders app & osascript.
-pub struct MacReminder {}
-
-impl MacReminder {
-    fn run_osascript(script: &str) -> io::Result<process::Output> {
-        Command::new("osascript").arg("-e").arg(script).output()
-    }
-}
-
-impl Reminder for MacReminder {
-    fn add_reminder(uuid: &str, title: &str, datetime: DateTime<Local>) -> io::Result<()> {
-        Command::new("task")
-            .arg(uuid)
-            .arg("modify")
-            .arg("+reminder")
-            .output()?;
-
-        let osascript = format!("
+        osascript.push_str(
+            format!(
+                "\
 set datetime to current date
 tell datetime to set {{its year, its month, its day}} to words of \"{date}\"
-tell datetime to set {{its hours, its minutes}} to words of \"{time}\"
+tell datetime to set {{its hours, its minutes}} to words of \"{time}\"\n",
+                date = date_str,
+                time = time_str
+            )
+            .as_str(),
+        );
+    }
+
+    osascript.push_str(
+        "\
 tell app \"Reminders\"
     tell list \"Reminders\" of default account
-        make new reminder with properties {{name:\"{title}\", body:\"{uuid}\", remind me date:datetime}}
-    end
-end", date = datetime.format("%Y-%m-%d"), time = datetime.format("%H:%M"), title = title, uuid = uuid);
-        Self::run_osascript(&osascript)?;
-        Ok(())
+        make new reminder with properties ",
+    );
+    osascript.push_str(
+        format!(
+            "{{name:\"{description}\", body:\"{uuid}\"",
+            description = task.description,
+            uuid = task.uuid,
+        )
+        .as_str(),
+    );
+
+    if task.wait.is_some() {
+        osascript.push_str(", remind me date:datetime");
     }
+    osascript.push_str(
+        "\
 }
+    end
+end",
+    );
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    println!("{}", osascript);
 
-    #[test]
-    fn test_set_reminders() -> io::Result<()> {
-        set_reminders::<MacReminder>(vec!["24"])
-    }
+    Command::new("osascript")
+        .arg("-e")
+        .arg(osascript)
+        .output()?;
+
+    Ok(())
 }

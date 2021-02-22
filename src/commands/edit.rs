@@ -6,7 +6,7 @@ use std::process::{exit, Command};
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
 
-pub fn edit_notes(opt: Opt) -> io::Result<()> {
+pub fn execute(opt: Opt) -> io::Result<()> {
     let tasks = Task::get(opt.args.iter())?;
 
     if create_dir_all(&opt.root_dir).is_err() {
