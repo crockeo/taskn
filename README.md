@@ -7,6 +7,7 @@
     - [Options](#options)
   - [Why?](#why)
   - [Contributing](#contributing)
+    - [Planned Work](#planned-work)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -79,3 +80,21 @@ Feel free to contribute! I can't promise I'll check this repo very often, but if
 me I'll get around to it Eventually™. Before committing code make sure you install
 [pre-commit](https://pre-commit.com/) and set it up to
 [run on commit](https://pre-commit.com/#3-install-the-git-hook-scripts).
+
+If you're interested but don't know what to work on,
+please make an Issue with a feature proposal
+or peruse the Planned Work section below.
+
+### Planned Work
+
+- Bind to Apple's [EventKit](https://developer.apple.com/documentation/eventkit?language=objc)
+  so we can stop making events reminders through osascript.
+  Related reading: [bindgen for objective C](https://rust-lang.github.io/rust-bindgen/objc.html)
+  And for me, my bindgen usage in [envoy-mobile-sys](https://github.com/crockeo/envoy-mobile-sys)
+
+- More generalized wrapper around taskwarrior
+  that reduces the amount I have to type.
+  Something that's mostly plaintext but has a
+  modal interface to reduce keystrokes
+
+More to come :)
