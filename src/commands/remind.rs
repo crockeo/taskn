@@ -1,5 +1,6 @@
 use std::io;
 use std::process::Command;
+use std::str;
 
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
@@ -70,10 +71,22 @@ tell app \"Reminders\"
 end",
     );
 
-    Command::new("osascript")
+    // TODO: make this error handling more robust
+    let output = Command::new("osascript")
         .arg("-e")
-        .arg(osascript)
+        .arg(&osascript)
         .output()?;
+    if !output.status.success() {
+        println!("{}", osascript);
+        match str::from_utf8(&output.stderr) {
+            Ok(err) => print!("Error: {}", err),
+            _ => {}
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "failed to excute osascript",
+        ));
+    }
 
     Ok(())
 }
