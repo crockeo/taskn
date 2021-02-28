@@ -1,6 +1,6 @@
-/// Provides a high-level wrapper around the eventkit-sys crate defined in this repository.
-/// This module allows one to read, create, and update reminders on macOS.
-/// Because this module depends on eventkit-sys, do not expect it to compile on non-macOS systems.
+//! Provides a high-level wrapper around the eventkit-sys crate defined in this repository.
+//! This module allows one to read, create, and update reminders on macOS.
+//! Because this module depends on eventkit-sys, do not expect it to compile on non-macOS systems.
 use std::ffi::{c_void, CString};
 
 use chrono::{DateTime, Local};
@@ -28,6 +28,24 @@ impl EventStore {
         }
         Self { ek_event_store }
     }
+
+    pub fn save_reminder(&mut self, reminder: Reminder, commit: bool) -> EKResult<bool> {
+        let ns_error: *mut Object;
+        let saved: bool;
+        unsafe {
+            ns_error = msg_send![class!(NSError), alloc];
+            saved =
+                msg_send![self.ek_event_store, saveReminder:reminder commit:commit error:ns_error];
+        }
+
+        // TODO: handle the error
+
+        unsafe {
+            let _: c_void = msg_send![ns_error, dealloc];
+        }
+
+        Ok(saved)
+    }
 }
 
 impl Drop for EventStore {
@@ -43,7 +61,7 @@ struct Reminder {
 }
 
 impl Reminder {
-    fn new(title: String, notes: String, time: DateTime<Local>) -> Self {
+    fn new<S: AsRef<str>>(title: S, notes: S, time: DateTime<Local>) -> Self {
         let cls = class!(EKReminder);
         let ek_reminder: *mut Object;
         unsafe {
@@ -53,6 +71,8 @@ impl Reminder {
             let ns_notes = to_ns_string(notes);
             let _: c_void = msg_send![ek_reminder, setTitle: ns_title];
             let _: c_void = msg_send![ek_reminder, setNotes: ns_notes];
+
+            // TODO: assign a time and make an alarm(?)
         }
         Self { ek_reminder }
     }
@@ -72,6 +92,13 @@ impl Drop for Reminder {
     }
 }
 
+/// Converts a str-like to an
+/// [NSString](https://developer.apple.com/documentation/foundation/nsstring?language=objc)
+/// returning it as a `*mut Object`. It is the responsibility of the caller to free this string.
+///
+/// # Arguments
+///
+/// * `s` - The string we want to convert to an NSString. This can be owned or unowned.
 unsafe fn to_ns_string<S: AsRef<str>>(s: S) -> *mut Object {
     // TODO: we're constructing an owned object, c_string, from the ref we receive
     // but we could totally avoid that by just using a CStr instead(?)
@@ -113,12 +140,23 @@ mod tests {
 
     #[test]
     fn test_reminder_new() {
-        {
-            let reminder = Reminder::new(
-                "a title".to_string(),
-                "a notes".to_string(),
-                Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
-            );
-        }
+        let _ = Reminder::new(
+            "a title",
+            "a notes",
+            Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
+        );
+    }
+
+    #[test]
+    fn test_save_reminder() -> EKResult<()> {
+        let mut event_store = EventStore::new();
+        let reminder = Reminder::new(
+            "a title",
+            "a notes",
+            Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
+        );
+        let saved = event_store.save_reminder(reminder, true)?;
+        assert!(saved);
+        Ok(())
     }
 }
