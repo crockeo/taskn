@@ -5,6 +5,8 @@ use std::str;
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
 
+mod eventkit;
+
 pub fn execute(opt: Opt) -> io::Result<()> {
     let mut taskwarrior_args = opt.args;
     taskwarrior_args.push("+remindme".to_string());

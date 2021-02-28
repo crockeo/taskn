@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate objc;
+
 mod commands;
 mod opt;
 mod taskwarrior;
