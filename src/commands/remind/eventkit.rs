@@ -33,34 +33,61 @@ impl EventStore {
 impl Drop for EventStore {
     fn drop(&mut self) {
         unsafe {
-            let _: c_void = msg_send![self.ek_event_store, dealloc];
+            let _: c_void = msg_send![self.ek_event_store, release];
         }
     }
 }
 
 struct Reminder {
-    pub title: String,
-    pub notes: String,
-    pub time: DateTime<Local>,
+    ek_reminder: *mut Object,
 }
 
-unsafe fn to_ek_reminder(reminder: Reminder) -> *mut Object {
-    let cls = class!(EKReminder);
-    let ek_reminder: *mut Object = msg_send![cls, alloc];
+impl Reminder {
+    fn new(title: String, notes: String, time: DateTime<Local>) -> Self {
+        let cls = class!(EKReminder);
+        let ek_reminder: *mut Object;
+        unsafe {
+            ek_reminder = msg_send![cls, alloc];
 
-    let ns_title = to_ns_string(reminder.title);
-    let _: c_void = msg_send![ek_reminder, setTitle: ns_title];
+            let ns_title = to_ns_string(title);
+            let ns_notes = to_ns_string(notes);
+            let _: c_void = msg_send![ek_reminder, setTitle: ns_title];
+            let _: c_void = msg_send![ek_reminder, setNotes: ns_notes];
+        }
+        Self { ek_reminder }
+    }
+}
 
-    let ns_notes = to_ns_string(reminder.notes);
-    let _: c_void = msg_send![ek_reminder, setNotes: ns_notes];
+impl Drop for Reminder {
+    fn drop(&mut self) {
+        unsafe {
+            let ns_title: *mut Object = msg_send![self.ek_reminder, title];
+            let _: c_void = msg_send![ns_title, dealloc];
 
-    ek_reminder
+            let ns_notes: *mut Object = msg_send![self.ek_reminder, notes];
+            let _: c_void = msg_send![ns_notes, dealloc];
+
+            let _: c_void = msg_send![self.ek_reminder, dealloc];
+        }
+    }
 }
 
 unsafe fn to_ns_string<S: AsRef<str>>(s: S) -> *mut Object {
-    let c_string = CString::new(s.as_ref());
+    // TODO: we're constructing an owned object, c_string, from the ref we receive
+    // but we could totally avoid that by just using a CStr instead(?)
+
+    // convert the rust string into a CString ptr
+    let c_string = CString::new(s.as_ref()).unwrap().into_raw();
+
+    // turn that UTF8 encoded CString into an NSString
     let cls = class!(NSString);
-    let ns_string = msg_send![cls, stringWithCString: c_string];
+    let mut ns_string: *mut Object;
+    ns_string = msg_send![cls, alloc];
+    ns_string = msg_send![ns_string, initWithUTF8String: c_string];
+
+    // resume ownership of the CString to drop it
+    let _ = CString::from_raw(c_string);
+
     ns_string
 }
 
@@ -80,22 +107,18 @@ mod tests {
         let ns_string: *mut Object;
         unsafe {
             ns_string = to_ns_string("hello world");
+            let _: c_void = msg_send![ns_string, release];
         }
     }
 
     #[test]
-    fn test_to_ek_reminder() {
-        let event_store = EventStore::new();
-        let reminder = Reminder {
-            title: "a title".to_string(),
-            notes: "a notes".to_string(),
-            time: Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
-        };
-
-        let ek_reminder;
-        unsafe {
-            ek_reminder = to_ek_reminder(reminder);
-            let _: c_void = msg_send![ek_reminder, dealloc];
+    fn test_reminder_new() {
+        {
+            let reminder = Reminder::new(
+                "a title".to_string(),
+                "a notes".to_string(),
+                Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
+            );
         }
     }
 }
