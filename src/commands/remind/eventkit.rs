@@ -142,6 +142,7 @@ impl Reminder {
             let ns_date_components = to_ns_date_components(date_time);
             unsafe {
                 let _: c_void = msg_send![ek_reminder, setDueDateComponents: ns_date_components];
+                let _: c_void = msg_send![ns_date_components, release];
             }
         }
 
@@ -251,7 +252,7 @@ fn to_ns_date_components<Tz: TimeZone>(date_time: DateTime<Tz>) -> *mut Object {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{NaiveDate, TimeZone};
+    use chrono::{Local, NaiveDate};
 
     use super::*;
 
@@ -293,7 +294,7 @@ mod tests {
             &mut event_store,
             "a title",
             "a notes",
-            Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
+            Some(Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0))),
         );
         Ok(())
     }
@@ -305,7 +306,7 @@ mod tests {
             &mut event_store,
             "a title",
             "a notes",
-            Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
+            Some(Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0))),
         );
         let saved = event_store.save_reminder(reminder, true)?;
         assert!(saved);
