@@ -2,7 +2,12 @@
 //! This module allows one to read, create, and update reminders on macOS.
 //! Because this module depends on eventkit-sys, do not expect it to compile on non-macOS systems.
 use std::ffi::{c_void, CString};
+use std::os::raw::c_char;
+use std::slice;
+use std::str;
+use std::sync::{Condvar, Mutex};
 
+use block::ConcreteBlock;
 use chrono::{DateTime, Local};
 use objc::runtime::Object;
 
@@ -10,7 +15,10 @@ use objc::runtime::Object;
 extern "C" {}
 
 #[derive(Debug)]
-enum EKError {}
+enum EKError {
+    /// Used when an operation requires some kind of permissions that the user has not provided.
+    NoAccess,
+}
 
 type EKResult<T> = Result<T, EKError>;
 
@@ -19,33 +27,63 @@ struct EventStore {
 }
 
 impl EventStore {
-    pub fn new() -> Self {
+    pub fn new() -> EKResult<Self> {
+        let cls = class!(EKEventStore);
         let mut ek_event_store: *mut Object;
         unsafe {
-            let cls = class!(EKEventStore);
             ek_event_store = msg_send![cls, alloc];
             ek_event_store = msg_send![ek_event_store, init];
         }
-        Self { ek_event_store }
+
+        let has_permission = Mutex::new(false);
+        let has_permission_cond = Condvar::new();
+        let completion_block = ConcreteBlock::new(|granted: bool, _ns_error: *mut Object| {
+            // TODO: handle the ns_error
+            let mut lock = has_permission.lock().unwrap();
+            *lock = granted;
+            has_permission_cond.notify_one();
+        });
+
+        let lock = has_permission.lock().unwrap();
+        unsafe {
+            let _: c_void = msg_send![
+                ek_event_store,
+                requestAccessToEntityType:1
+                completion:completion_block
+            ];
+        }
+        let lock = has_permission_cond.wait(lock).unwrap();
+
+        if !*lock {
+            return Err(EKError::NoAccess);
+        }
+        Ok(Self { ek_event_store })
     }
 
-    pub fn save_reminder(&mut self, reminder: Reminder, commit: bool) -> EKResult<bool> {
-        let ns_error: *mut Object;
-        let saved: bool;
-        unsafe {
-            ns_error = msg_send![class!(NSError), alloc];
-            saved =
-                msg_send![self.ek_event_store, saveReminder:reminder commit:commit error:ns_error];
-        }
+    // TODO: this function is causing issues right now; SIGSEGV and/or SIGABRT
+    // pub fn save_reminder(&mut self, reminder: Reminder, commit: bool) -> EKResult<bool> {
+    //     let ns_error: *mut Object;
+    //     let saved: bool;
+    //     unsafe {
+    //         ns_error = msg_send![class!(NSError), alloc];
+    //         saved = msg_send![
+    //             self.ek_event_store,
+    //             saveReminder:reminder.ek_reminder
+    //             commit:commit
+    //             error:ns_error
+    //         ];
+    //     }
 
-        // TODO: handle the error
+    //     // TODO: handle the error
 
-        unsafe {
-            let _: c_void = msg_send![ns_error, dealloc];
-        }
+    //     unsafe {
+    //         println!("releasing ns_error");
+    //         // TODO: when this is called, we get a SIGABRT
+    //         // let _: c_void = msg_send![ns_error, release];
+    //     }
 
-        Ok(saved)
-    }
+    //     Ok(saved)
+    // }
 }
 
 impl Drop for EventStore {
@@ -61,11 +99,16 @@ struct Reminder {
 }
 
 impl Reminder {
-    fn new<S: AsRef<str>>(title: S, notes: S, time: DateTime<Local>) -> Self {
+    fn new<S: AsRef<str>>(
+        event_store: &mut EventStore,
+        title: S,
+        notes: S,
+        _time: DateTime<Local>,
+    ) -> Self {
         let cls = class!(EKReminder);
         let ek_reminder: *mut Object;
         unsafe {
-            ek_reminder = msg_send![cls, alloc];
+            ek_reminder = msg_send![cls, reminderWithEventStore:event_store.ek_event_store];
 
             let ns_title = to_ns_string(title);
             let ns_notes = to_ns_string(notes);
@@ -82,12 +125,12 @@ impl Drop for Reminder {
     fn drop(&mut self) {
         unsafe {
             let ns_title: *mut Object = msg_send![self.ek_reminder, title];
-            let _: c_void = msg_send![ns_title, dealloc];
+            let _: c_void = msg_send![ns_title, release];
 
             let ns_notes: *mut Object = msg_send![self.ek_reminder, notes];
-            let _: c_void = msg_send![ns_notes, dealloc];
+            let _: c_void = msg_send![ns_notes, release];
 
-            let _: c_void = msg_send![self.ek_reminder, dealloc];
+            let _: c_void = msg_send![self.ek_reminder, release];
         }
     }
 }
@@ -99,7 +142,7 @@ impl Drop for Reminder {
 /// # Arguments
 ///
 /// * `s` - The string we want to convert to an NSString. This can be owned or unowned.
-unsafe fn to_ns_string<S: AsRef<str>>(s: S) -> *mut Object {
+fn to_ns_string<S: AsRef<str>>(s: S) -> *mut Object {
     // TODO: we're constructing an owned object, c_string, from the ref we receive
     // but we could totally avoid that by just using a CStr instead(?)
 
@@ -109,13 +152,32 @@ unsafe fn to_ns_string<S: AsRef<str>>(s: S) -> *mut Object {
     // turn that UTF8 encoded CString into an NSString
     let cls = class!(NSString);
     let mut ns_string: *mut Object;
-    ns_string = msg_send![cls, alloc];
-    ns_string = msg_send![ns_string, initWithUTF8String: c_string];
+    unsafe {
+        ns_string = msg_send![cls, alloc];
+        ns_string = msg_send![ns_string, initWithUTF8String: c_string];
+    }
 
     // resume ownership of the CString to drop it
-    let _ = CString::from_raw(c_string);
+    unsafe {
+        let _ = CString::from_raw(c_string);
+    }
 
     ns_string
+}
+
+/// Converts an [NSString](https://developer.apple.com/documentation/foundation/nsstring?language=objc)
+/// into a [String].
+///
+/// The provided NSString MUST be UTF8 encoded. This function copies from the NSString, and does
+/// not attempt to release it.
+unsafe fn from_ns_string(ns_string: *mut Object) -> String {
+    let bytes = {
+        let bytes: *const c_char = msg_send![ns_string, UTF8String];
+        bytes as *const u8
+    };
+    let len: usize = msg_send![ns_string, lengthOfBytesUsingEncoding:4]; // 4 = UTF8_ENCODING
+    let bytes = slice::from_raw_parts(bytes, len);
+    str::from_utf8(bytes).unwrap().to_string()
 }
 
 #[cfg(test)]
@@ -139,24 +201,41 @@ mod tests {
     }
 
     #[test]
-    fn test_reminder_new() {
-        let _ = Reminder::new(
-            "a title",
-            "a notes",
-            Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
-        );
+    fn test_from_ns_string() {
+        let s1 = "hello world".to_string();
+        let ns_string = to_ns_string(&s1);
+        let s2;
+        unsafe {
+            s2 = from_ns_string(ns_string);
+            let _: c_void = msg_send![ns_string, release];
+        }
+        assert_eq!(s1, s2);
     }
 
     #[test]
-    fn test_save_reminder() -> EKResult<()> {
-        let mut event_store = EventStore::new();
-        let reminder = Reminder::new(
+    fn test_reminder_new() -> EKResult<()> {
+        let mut event_store = EventStore::new()?;
+        let _ = Reminder::new(
+            &mut event_store,
             "a title",
             "a notes",
             Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
         );
-        let saved = event_store.save_reminder(reminder, true)?;
-        assert!(saved);
         Ok(())
     }
+
+    // TODO: this test causes SIGSEGV and/or SIGABRT
+    // #[test]
+    // fn test_save_reminder() -> EKResult<()> {
+    //     let mut event_store = EventStore::new()?;
+    //     let reminder = Reminder::new(
+    //         &mut event_store,
+    //         "a title",
+    //         "a notes",
+    //         Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
+    //     );
+    //     let saved = event_store.save_reminder(reminder, true)?;
+    //     // assert!(saved);
+    //     Ok(())
+    // }
 }
