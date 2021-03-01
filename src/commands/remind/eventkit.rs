@@ -19,6 +19,20 @@ extern "C" {}
 enum EKError {
     /// Used when an operation requires some kind of permissions that the user has not provided.
     NoAccess,
+
+    /// General case whenever an NSError is encountered. The String is populated by the NSError's
+    /// localizedDescription.
+    NSError(String),
+}
+
+impl EKError {
+    /// The caller of this function must ensure that the *mut Object provided is, in fact, an
+    /// NSError nad not some other kind of Object.
+    unsafe fn from_ns_error(ns_error: *mut Object) -> EKError {
+        let ns_desc = msg_send![ns_error, localizedDescription];
+        let desc = from_ns_string(ns_desc);
+        EKError::NSError(desc)
+    }
 }
 
 type EKResult<T> = Result<T, EKError>;
@@ -73,18 +87,22 @@ impl EventStore {
     }
 
     pub fn save_reminder(&mut self, reminder: Reminder, commit: bool) -> EKResult<bool> {
+        let mut ns_error: *mut Object = null_mut();
         let saved: bool;
         unsafe {
             saved = msg_send![
                 self.ek_event_store,
                 saveReminder:reminder.ek_reminder
                 commit:commit
-                // TODO: at some point use an NSError here and report and error if it occurs
-                error:null_mut::<*mut Object>()
+                error:&mut (ns_error) as *mut *mut Object
             ];
         }
 
-        Ok(saved)
+        if ns_error != null_mut() {
+            unsafe { Err(EKError::from_ns_error(ns_error)) }
+        } else {
+            Ok(saved)
+        }
     }
 }
 
@@ -241,8 +259,7 @@ mod tests {
             Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
         );
         let saved = event_store.save_reminder(reminder, true)?;
-        // we are _not_ saving here, for some reason
-        // assert!(saved);
+        assert!(saved);
         Ok(())
     }
 }
