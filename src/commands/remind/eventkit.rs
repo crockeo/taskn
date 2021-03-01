@@ -187,13 +187,8 @@ enum EKEntityType {
 ///
 /// * `s` - The string we want to convert to an NSString. This can be owned or unowned.
 fn to_ns_string<S: AsRef<str>>(s: S) -> *mut Object {
-    // TODO: we're constructing an owned object, c_string, from the ref we receive
-    // but we could totally avoid that by just using a CStr instead(?)
-
-    // convert the rust string into a CString ptr
     let c_string = CString::new(s.as_ref()).unwrap().into_raw();
 
-    // turn that UTF8 encoded CString into an NSString
     let cls = class!(NSString);
     let mut ns_string: *mut Object;
     unsafe {
@@ -201,7 +196,6 @@ fn to_ns_string<S: AsRef<str>>(s: S) -> *mut Object {
         ns_string = msg_send![ns_string, initWithUTF8String: c_string];
     }
 
-    // resume ownership of the CString to drop it
     unsafe {
         let _ = CString::from_raw(c_string);
     }
