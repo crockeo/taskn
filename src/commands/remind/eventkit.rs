@@ -9,7 +9,7 @@ use std::str;
 use std::sync::{Condvar, Mutex};
 
 use block::ConcreteBlock;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
 use objc::runtime::Object;
 
 #[link(name = "EventKit", kind = "framework")]
@@ -123,23 +123,25 @@ impl Reminder {
         event_store: &mut EventStore,
         title: S,
         notes: S,
-        _time: DateTime<Local>,
+        time: DateTime<Local>,
     ) -> Self {
         let cls = class!(EKReminder);
         let ek_reminder: *mut Object;
+
+        let ns_title = to_ns_string(title);
+        let ns_notes = to_ns_string(notes);
+        let ns_date_components = to_ns_date_components(time);
+
         unsafe {
             ek_reminder = msg_send![cls, reminderWithEventStore:event_store.ek_event_store];
 
-            let ns_title = to_ns_string(title);
-            let ns_notes = to_ns_string(notes);
             let _: c_void = msg_send![ek_reminder, setTitle: ns_title];
             let _: c_void = msg_send![ek_reminder, setNotes: ns_notes];
+            let _: c_void = msg_send![ek_reminder, setDueDateComponents: ns_date_components];
 
-            unsafe {
-                let cal: *mut Object =
-                    msg_send![event_store.ek_event_store, defaultCalendarForNewReminders];
-                let _: c_void = msg_send![ek_reminder, setCalendar: cal];
-            }
+            let cal: *mut Object =
+                msg_send![event_store.ek_event_store, defaultCalendarForNewReminders];
+            let _: c_void = msg_send![ek_reminder, setCalendar: cal];
 
             // TODO: assign a time and make an alarm(?)
         }
@@ -175,7 +177,8 @@ impl Drop for Reminder {
 #[repr(u64)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 enum EKEntityType {
-    Event = 0,
+    // we don't actually use the Event type ever
+    // Event = 0,
     Reminder = 1,
 }
 
@@ -216,6 +219,34 @@ unsafe fn from_ns_string(ns_string: *mut Object) -> String {
     let len: usize = msg_send![ns_string, lengthOfBytesUsingEncoding:4]; // 4 = UTF8_ENCODING
     let bytes = slice::from_raw_parts(bytes, len);
     str::from_utf8(bytes).unwrap().to_string()
+}
+
+/// Converts a [DateTime] of a particular TZ into its
+/// [NSDateComponents](https://developer.apple.com/documentation/foundation/nsdatecomponents?language=objc)
+/// counterpart.
+///
+/// # Arguments
+///
+/// * `date_time` - The datetime we want to convert.
+fn to_ns_date_components<Tz: TimeZone>(date_time: DateTime<Tz>) -> *mut Object {
+    // the reminders app localizes the NSDateComponents for you
+    // so we just want our time to be in UTC or otherwise it'll
+    // double localize
+    let date_time = date_time.naive_utc();
+
+    let mut ns_date_components: *mut Object;
+    unsafe {
+        ns_date_components = msg_send![class!(NSDateComponents), alloc];
+        ns_date_components = msg_send![ns_date_components, init];
+
+        let _: c_void = msg_send![ns_date_components, setYear:date_time.year()];
+        let _: c_void = msg_send![ns_date_components, setMonth:date_time.month()];
+        let _: c_void = msg_send![ns_date_components, setDay:date_time.day()];
+        let _: c_void = msg_send![ns_date_components, setHour:date_time.hour()];
+        let _: c_void = msg_send![ns_date_components, setMinute:date_time.minute()];
+        let _: c_void = msg_send![ns_date_components, setSecond:date_time.second()];
+    }
+    ns_date_components
 }
 
 #[cfg(test)]
