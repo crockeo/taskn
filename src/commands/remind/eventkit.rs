@@ -73,7 +73,7 @@ impl EventStore {
         unsafe {
             let _: c_void = msg_send![
                 self.ek_event_store,
-                requestAccessToEntityType:1
+                requestAccessToEntityType:EKEntityType::Reminder
                 completion:completion_block
             ];
         }
@@ -135,6 +135,12 @@ impl Reminder {
             let _: c_void = msg_send![ek_reminder, setTitle: ns_title];
             let _: c_void = msg_send![ek_reminder, setNotes: ns_notes];
 
+            unsafe {
+                let cal: *mut Object =
+                    msg_send![event_store.ek_event_store, defaultCalendarForNewReminders];
+                let _: c_void = msg_send![ek_reminder, setCalendar: cal];
+            }
+
             // TODO: assign a time and make an alarm(?)
         }
         Self { ek_reminder }
@@ -153,6 +159,24 @@ impl Drop for Reminder {
             let _: c_void = msg_send![self.ek_reminder, release];
         }
     }
+}
+
+/// This is defined in Objective C to be:
+///
+/// ```
+/// enum {
+///    EKEntityTypeEvent,
+///    EKEntityTypeReminder
+/// };
+/// typedef NSUInteger EKEntityType;
+/// ```
+///
+/// So we just use a similar enum structure here.
+#[repr(u64)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+enum EKEntityType {
+    Event = 0,
+    Reminder = 1,
 }
 
 /// Converts a str-like to an
