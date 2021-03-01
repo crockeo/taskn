@@ -13,7 +13,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     let tasks = Task::get(taskwarrior_args.into_iter())?;
     let task_len = tasks.len();
 
-    let mut event_store = EventStore::new_with_permission().unwrap();
+    let mut event_store = EventStore::new().unwrap();
     for (i, task) in tasks.into_iter().enumerate() {
         let reminder = Reminder::new(
             &mut event_store,

@@ -234,11 +234,6 @@ unsafe fn from_ns_string(ns_string: *mut Object) -> String {
 ///
 /// * `date_time` - The datetime we want to convert.
 fn to_ns_date_components<Tz: TimeZone>(date_time: DateTime<Tz>) -> *mut Object {
-    // the reminders app localizes the NSDateComponents for you
-    // so we just want our time to be in UTC or otherwise it'll
-    // double localize
-    let date_time = date_time.naive_utc();
-
     let mut ns_date_components: *mut Object;
     unsafe {
         ns_date_components = msg_send![class!(NSDateComponents), alloc];
