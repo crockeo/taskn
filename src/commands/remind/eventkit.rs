@@ -35,6 +35,16 @@ impl EventStore {
             ek_event_store = msg_send![ek_event_store, init];
         }
 
+        Ok(Self { ek_event_store })
+    }
+
+    pub fn new_with_permission() -> EKResult<Self> {
+        let mut event_store = Self::new()?;
+        event_store.request_permission()?;
+        Ok(event_store)
+    }
+
+    pub fn request_permission(&mut self) -> EKResult<()> {
         let has_permission = Mutex::new(false);
         let has_permission_cond = Condvar::new();
         let completion_block = ConcreteBlock::new(|granted: bool, _ns_error: *mut Object| {
@@ -47,7 +57,7 @@ impl EventStore {
         let lock = has_permission.lock().unwrap();
         unsafe {
             let _: c_void = msg_send![
-                ek_event_store,
+                self.ek_event_store,
                 requestAccessToEntityType:1
                 completion:completion_block
             ];
@@ -55,9 +65,10 @@ impl EventStore {
         let lock = has_permission_cond.wait(lock).unwrap();
 
         if !*lock {
-            return Err(EKError::NoAccess);
+            Err(EKError::NoAccess)
+        } else {
+            Ok(())
         }
-        Ok(Self { ek_event_store })
     }
 
     // TODO: this function is causing issues right now; SIGSEGV and/or SIGABRT
@@ -189,6 +200,11 @@ mod tests {
     #[test]
     fn test_event_store_new() {
         let _ = EventStore::new();
+    }
+
+    #[test]
+    fn test_event_store_new_with_permission() {
+        let _ = EventStore::new_with_permission();
     }
 
     #[test]
