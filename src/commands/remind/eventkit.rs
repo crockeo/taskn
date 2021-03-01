@@ -3,6 +3,7 @@
 //! Because this module depends on eventkit-sys, do not expect it to compile on non-macOS systems.
 use std::ffi::{c_void, CString};
 use std::os::raw::c_char;
+use std::ptr::null_mut;
 use std::slice;
 use std::str;
 use std::sync::{Condvar, Mutex};
@@ -71,30 +72,20 @@ impl EventStore {
         }
     }
 
-    // TODO: this function is causing issues right now; SIGSEGV and/or SIGABRT
-    // pub fn save_reminder(&mut self, reminder: Reminder, commit: bool) -> EKResult<bool> {
-    //     let ns_error: *mut Object;
-    //     let saved: bool;
-    //     unsafe {
-    //         ns_error = msg_send![class!(NSError), alloc];
-    //         saved = msg_send![
-    //             self.ek_event_store,
-    //             saveReminder:reminder.ek_reminder
-    //             commit:commit
-    //             error:ns_error
-    //         ];
-    //     }
+    pub fn save_reminder(&mut self, reminder: Reminder, commit: bool) -> EKResult<bool> {
+        let saved: bool;
+        unsafe {
+            saved = msg_send![
+                self.ek_event_store,
+                saveReminder:reminder.ek_reminder
+                commit:commit
+                // TODO: at some point use an NSError here and report and error if it occurs
+                error:null_mut::<*mut Object>()
+            ];
+        }
 
-    //     // TODO: handle the error
-
-    //     unsafe {
-    //         println!("releasing ns_error");
-    //         // TODO: when this is called, we get a SIGABRT
-    //         // let _: c_void = msg_send![ns_error, release];
-    //     }
-
-    //     Ok(saved)
-    // }
+        Ok(saved)
+    }
 }
 
 impl Drop for EventStore {
@@ -240,18 +231,18 @@ mod tests {
         Ok(())
     }
 
-    // TODO: this test causes SIGSEGV and/or SIGABRT
-    // #[test]
-    // fn test_save_reminder() -> EKResult<()> {
-    //     let mut event_store = EventStore::new()?;
-    //     let reminder = Reminder::new(
-    //         &mut event_store,
-    //         "a title",
-    //         "a notes",
-    //         Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
-    //     );
-    //     let saved = event_store.save_reminder(reminder, true)?;
-    //     // assert!(saved);
-    //     Ok(())
-    // }
+    #[test]
+    fn test_save_reminder() -> EKResult<()> {
+        let mut event_store = EventStore::new()?;
+        let reminder = Reminder::new(
+            &mut event_store,
+            "a title",
+            "a notes",
+            Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0)),
+        );
+        let saved = event_store.save_reminder(reminder, true)?;
+        // we are _not_ saving here, for some reason
+        // assert!(saved);
+        Ok(())
+    }
 }
