@@ -9,14 +9,14 @@ use std::str;
 use std::sync::{Condvar, Mutex};
 
 use block::ConcreteBlock;
-use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
+use chrono::{DateTime, Datelike, TimeZone, Timelike};
 use objc::runtime::Object;
 
 #[link(name = "EventKit", kind = "framework")]
 extern "C" {}
 
 #[derive(Debug)]
-enum EKError {
+pub enum EKError {
     /// Used when an operation requires some kind of permissions that the user has not provided.
     NoAccess,
 
@@ -35,9 +35,9 @@ impl EKError {
     }
 }
 
-type EKResult<T> = Result<T, EKError>;
+pub type EKResult<T> = Result<T, EKError>;
 
-struct EventStore {
+pub struct EventStore {
     ek_event_store: *mut Object,
 }
 
@@ -114,36 +114,41 @@ impl Drop for EventStore {
     }
 }
 
-struct Reminder {
+pub struct Reminder {
     ek_reminder: *mut Object,
 }
 
 impl Reminder {
-    fn new<S: AsRef<str>>(
+    pub fn new<S: AsRef<str>, Tz: TimeZone>(
         event_store: &mut EventStore,
         title: S,
         notes: S,
-        time: DateTime<Local>,
+        date_time: Option<DateTime<Tz>>,
     ) -> Self {
         let cls = class!(EKReminder);
         let ek_reminder: *mut Object;
+        unsafe {
+            ek_reminder = msg_send![cls, reminderWithEventStore:event_store.ek_event_store];
+        }
 
         let ns_title = to_ns_string(title);
         let ns_notes = to_ns_string(notes);
-        let ns_date_components = to_ns_date_components(time);
-
         unsafe {
-            ek_reminder = msg_send![cls, reminderWithEventStore:event_store.ek_event_store];
-
             let _: c_void = msg_send![ek_reminder, setTitle: ns_title];
             let _: c_void = msg_send![ek_reminder, setNotes: ns_notes];
-            let _: c_void = msg_send![ek_reminder, setDueDateComponents: ns_date_components];
+        }
 
+        if let Some(date_time) = date_time {
+            let ns_date_components = to_ns_date_components(date_time);
+            unsafe {
+                let _: c_void = msg_send![ek_reminder, setDueDateComponents: ns_date_components];
+            }
+        }
+
+        unsafe {
             let cal: *mut Object =
                 msg_send![event_store.ek_event_store, defaultCalendarForNewReminders];
             let _: c_void = msg_send![ek_reminder, setCalendar: cal];
-
-            // TODO: assign a time and make an alarm(?)
         }
         Self { ek_reminder }
     }
