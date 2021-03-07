@@ -17,6 +17,7 @@ pub struct Task {
     pub uuid: String,
     pub tags: Option<Vec<String>>,
     pub wait: Option<ParsableDateTime>,
+    pub taskn_reminder_uuid: Option<String>,
 }
 
 impl Task {

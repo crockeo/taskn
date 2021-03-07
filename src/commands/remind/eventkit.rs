@@ -28,6 +28,9 @@ pub enum EKError {
     /// General case whenever an NSError is encountered. The String is populated by the NSError's
     /// localizedDescription.
     NSError(String),
+
+    /// Used when an operation attempts to retrieve a value that may not be present.
+    NotFound,
 }
 
 impl EKError {
@@ -108,6 +111,21 @@ impl EventStore {
         }
 
         Ok(saved)
+    }
+
+    pub fn get_reminder<S: AsRef<str>>(&mut self, uuid: S) -> EKResult<Reminder> {
+        let ns_string = to_ns_string(uuid.as_ref().to_string());
+        let ek_reminder: *mut Object;
+        unsafe {
+            ek_reminder = msg_send![self.ek_event_store, calendarItemWithIdentifier: ns_string];
+            let _: *mut Object = msg_send![ns_string, release];
+        }
+
+        if ek_reminder == null_mut() {
+            Err(EKError::NotFound)
+        } else {
+            Ok(Reminder { ek_reminder })
+        }
     }
 }
 
