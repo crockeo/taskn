@@ -20,7 +20,7 @@ use objc::runtime::Object;
 #[link(name = "EventKit", kind = "framework")]
 extern "C" {}
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum EKError {
     /// Used when an operation requires some kind of permissions that the user has not provided.
     NoAccess,
@@ -68,12 +68,17 @@ impl EventStore {
     }
 
     pub fn request_permission(&mut self) -> EKResult<()> {
-        let has_permission = Mutex::new(false);
+        let has_permission = Mutex::new(Ok(false));
         let has_permission_cond = Condvar::new();
-        let completion_block = ConcreteBlock::new(|granted: bool, _ns_error: *mut Object| {
-            // TODO: handle the ns_error
+        let completion_block = ConcreteBlock::new(|granted: bool, ns_error: *mut Object| {
             let mut lock = has_permission.lock().unwrap();
-            *lock = granted;
+            if ns_error != null_mut() {
+                unsafe {
+                    *lock = Err(EKError::from_ns_error(ns_error));
+                }
+            } else {
+                *lock = Ok(granted);
+            }
             has_permission_cond.notify_one();
         });
 
@@ -87,10 +92,15 @@ impl EventStore {
         }
         let lock = has_permission_cond.wait(lock).unwrap();
 
-        if !*lock {
-            Err(EKError::NoAccess)
-        } else {
-            Ok(())
+        match &*lock {
+            Err(e) => Err(e.clone()),
+            Ok(granted) => {
+                if !granted {
+                    Err(EKError::NoAccess)
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -148,6 +158,13 @@ impl Reminder {
         unsafe {
             ek_reminder = msg_send![cls, reminderWithEventStore:event_store.ek_event_store];
         }
+
+        let cal: *mut Object;
+        unsafe {
+            cal = msg_send![event_store.ek_event_store, defaultCalendarForNewReminders];
+            let _: c_void = msg_send![ek_reminder, setCalendar: cal];
+        }
+
         Self { ek_reminder }
     }
 
