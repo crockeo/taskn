@@ -12,6 +12,11 @@ use block::ConcreteBlock;
 use chrono::{DateTime, Datelike, TimeZone, Timelike};
 use objc::runtime::Object;
 
+// NOTE:
+//   - calendarItemWithIdentifier to get a reminder
+//   - requires a UUID from the reminder
+//   - do we have the UUID after we save a reminder?
+
 #[link(name = "EventKit", kind = "framework")]
 extern "C" {}
 
@@ -86,7 +91,7 @@ impl EventStore {
         }
     }
 
-    pub fn save_reminder(&mut self, reminder: Reminder, commit: bool) -> EKResult<bool> {
+    pub fn save_reminder(&mut self, reminder: &Reminder, commit: bool) -> EKResult<bool> {
         let mut ns_error: *mut Object = null_mut();
         let saved: bool;
         unsafe {
@@ -99,10 +104,10 @@ impl EventStore {
         }
 
         if ns_error != null_mut() {
-            unsafe { Err(EKError::from_ns_error(ns_error)) }
-        } else {
-            Ok(saved)
+            unsafe { return Err(EKError::from_ns_error(ns_error)) }
         }
+
+        Ok(saved)
     }
 }
 
@@ -152,6 +157,14 @@ impl Reminder {
             let _: c_void = msg_send![ek_reminder, setCalendar: cal];
         }
         Self { ek_reminder }
+    }
+
+    pub fn uuid(&self) -> String {
+        let ns_string: *mut Object;
+        unsafe {
+            ns_string = msg_send![self.ek_reminder, calendarItemIdentifier];
+            from_ns_string(ns_string)
+        }
     }
 }
 

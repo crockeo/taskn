@@ -13,6 +13,8 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     let tasks = Task::get(taskwarrior_args.into_iter())?;
     let task_len = tasks.len();
 
+    Task::define_reminder_uda()?;
+
     let mut event_store = EventStore::new_with_permission().unwrap();
     for (i, task) in tasks.into_iter().enumerate() {
         let reminder = Reminder::new(
@@ -22,7 +24,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
             task.wait.map(|pdt| pdt.0),
         );
         event_store
-            .save_reminder(reminder, i == task_len - 1)
+            .save_reminder(&reminder, i == task_len - 1)
             .unwrap();
     }
 

@@ -1,11 +1,14 @@
 use std::fmt;
-use std::io;
+use std::fs::{File, OpenOptions};
+use std::io::{self, BufRead, BufReader, Write};
 use std::process::Command;
+use std::str;
 
 use chrono::offset::Local;
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use serde::de;
 use serde::Deserialize;
+use shellexpand::tilde;
 
 #[derive(Debug, Deserialize)]
 pub struct Task {
@@ -45,6 +48,32 @@ impl Task {
         }
     }
 
+    /// Defines a user defined attribute (UDA) that stores the UUID of an operating system reminder
+    /// onto the taskwarrior task.
+    pub fn define_reminder_uda() -> io::Result<()> {
+        let conf_line = "uda.taskn_reminder_uuid.type=string";
+        let taskrc_path = tilde("~/.taskrc");
+
+        let mut has_reminder_uda = false;
+        {
+            let taskrc = BufReader::new(File::open(taskrc_path.as_ref())?);
+            for line in taskrc.lines() {
+                let line = line?;
+                if line == conf_line {
+                    has_reminder_uda = true;
+                    break;
+                }
+            }
+        }
+
+        if !has_reminder_uda {
+            let mut taskrc = OpenOptions::new().append(true).open(taskrc_path.as_ref())?;
+            writeln!(taskrc, "{}", conf_line)?;
+        }
+
+        Ok(())
+    }
+
     /// Determines whether or not the [Task] contains a tag with the provided value.
     pub fn has_tag<S: AsRef<str>>(&self, s: S) -> bool {
         match &self.tags {
@@ -60,9 +89,19 @@ impl Task {
             }
         }
     }
+
+    pub fn set_reminder_uuid(&mut self, uuid: String) -> io::Result<()> {
+        Command::new("task")
+            .arg(&self.uuid)
+            .arg("modify")
+            .arg(format!("taskn_reminder_uuid:{}", uuid))
+            .output()?;
+
+        Ok(())
+    }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ParsableDateTime(pub DateTime<Local>);
 
 impl<'de> Deserialize<'de> for ParsableDateTime {
