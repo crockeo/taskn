@@ -142,37 +142,11 @@ pub struct Reminder {
 }
 
 impl Reminder {
-    pub fn new<S: AsRef<str>, Tz: TimeZone>(
-        event_store: &mut EventStore,
-        title: S,
-        notes: S,
-        date_time: Option<DateTime<Tz>>,
-    ) -> Self {
+    pub fn new(event_store: &mut EventStore) -> Self {
         let cls = class!(EKReminder);
         let ek_reminder: *mut Object;
         unsafe {
             ek_reminder = msg_send![cls, reminderWithEventStore:event_store.ek_event_store];
-        }
-
-        let ns_title = to_ns_string(title);
-        let ns_notes = to_ns_string(notes);
-        unsafe {
-            let _: c_void = msg_send![ek_reminder, setTitle: ns_title];
-            let _: c_void = msg_send![ek_reminder, setNotes: ns_notes];
-        }
-
-        if let Some(date_time) = date_time {
-            let ns_date_components = to_ns_date_components(date_time);
-            unsafe {
-                let _: c_void = msg_send![ek_reminder, setDueDateComponents: ns_date_components];
-                let _: c_void = msg_send![ns_date_components, release];
-            }
-        }
-
-        unsafe {
-            let cal: *mut Object =
-                msg_send![event_store.ek_event_store, defaultCalendarForNewReminders];
-            let _: c_void = msg_send![ek_reminder, setCalendar: cal];
         }
         Self { ek_reminder }
     }
@@ -183,6 +157,41 @@ impl Reminder {
             ns_string = msg_send![self.ek_reminder, calendarItemIdentifier];
             from_ns_string(ns_string)
         }
+    }
+
+    // TODO: this part is probably dangerous + leaks memory. come back here at some point and clean
+    // it up.
+    pub fn set_title<S: AsRef<str>>(&mut self, title: S) -> &mut Self {
+        let ns_string = to_ns_string(title.as_ref().to_string());
+        unsafe {
+            let _: c_void = msg_send![self.ek_reminder, setTitle: ns_string];
+        }
+        self
+    }
+
+    pub fn set_notes<S: AsRef<str>>(&mut self, notes: S) -> &mut Self {
+        let ns_string = to_ns_string(notes.as_ref().to_string());
+        unsafe {
+            let _: c_void = msg_send![self.ek_reminder, setNotes: ns_string];
+        }
+        self
+    }
+
+    pub fn set_alarm<Tz: TimeZone>(&mut self, date_time: Option<DateTime<Tz>>) -> &mut Self {
+        if let Some(date_time) = date_time {
+            let ns_date_components = to_ns_date_components(date_time);
+            unsafe {
+                let _: c_void =
+                    msg_send![self.ek_reminder, setDueDateComponents: ns_date_components];
+                let _: c_void = msg_send![ns_date_components, release];
+            }
+        } else {
+            let nil: *mut Object = null_mut();
+            unsafe {
+                let _: c_void = msg_send![self.ek_reminder, setDueDateComponents: nil];
+            }
+        }
+        self
     }
 }
 
@@ -283,17 +292,28 @@ fn to_ns_date_components<Tz: TimeZone>(date_time: DateTime<Tz>) -> *mut Object {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use chrono::{Local, NaiveDate};
+    use lazy_static::lazy_static;
 
     use super::*;
 
+    // each test must exclusively own the EventStore
+    // so we make sure only one executes at a time.
+    lazy_static! {
+        static ref MTX: Mutex<()> = Mutex::new(());
+    }
+
     #[test]
     fn test_event_store_new() {
+        let _lock = MTX.lock().unwrap();
         let _ = EventStore::new();
     }
 
     #[test]
     fn test_event_store_new_with_permission() {
+        let _lock = MTX.lock().unwrap();
         let _ = EventStore::new_with_permission();
     }
 
@@ -320,26 +340,29 @@ mod tests {
 
     #[test]
     fn test_reminder_new() -> EKResult<()> {
+        let _lock = MTX.lock().unwrap();
         let mut event_store = EventStore::new()?;
-        let _ = Reminder::new(
-            &mut event_store,
-            "a title",
-            "a notes",
-            Some(Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0))),
-        );
+        let _ = Reminder::new(&mut event_store)
+            .set_title("a title")
+            .set_notes("a notes")
+            .set_alarm(Some(Local.from_utc_datetime(
+                &NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0),
+            )));
         Ok(())
     }
 
     #[test]
     fn test_save_reminder() -> EKResult<()> {
+        let _lock = MTX.lock().unwrap();
         let mut event_store = EventStore::new()?;
-        let reminder = Reminder::new(
-            &mut event_store,
-            "a title",
-            "a notes",
-            Some(Local.from_utc_datetime(&NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0))),
-        );
-        let saved = event_store.save_reminder(reminder, true)?;
+        let mut reminder = Reminder::new(&mut event_store);
+        reminder
+            .set_title("a title")
+            .set_notes("a notes")
+            .set_alarm(Some(Local.from_utc_datetime(
+                &NaiveDate::from_ymd(2021, 5, 01).and_hms(12, 0, 0),
+            )));
+        let saved = event_store.save_reminder(&reminder, true)?;
         assert!(saved);
         Ok(())
     }

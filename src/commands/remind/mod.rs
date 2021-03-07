@@ -17,17 +17,17 @@ pub fn execute(opt: Opt) -> io::Result<()> {
 
     let mut event_store = EventStore::new_with_permission().unwrap();
     for (i, task) in tasks.iter_mut().enumerate() {
-        let reminder;
+        let mut reminder;
         if let Some(taskn_reminder_uuid) = &task.taskn_reminder_uuid {
             reminder = event_store.get_reminder(taskn_reminder_uuid).unwrap();
         } else {
-            reminder = Reminder::new(
-                &mut event_store,
-                &task.description,
-                &task.uuid,
-                task.wait.clone().map(|pdt| pdt.0),
-            );
+            reminder = Reminder::new(&mut event_store);
         }
+
+        reminder
+            .set_title(&task.description)
+            .set_notes(&task.uuid)
+            .set_alarm(task.wait.clone().map(|pdt| pdt.0));
 
         event_store
             .save_reminder(&reminder, i == task_len - 1)
