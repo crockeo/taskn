@@ -57,7 +57,7 @@ taskn will create it [default: ~/.taskn]
 ## Why?
 
 As is the story in a lot [of](https://github.com/crockeo/pj) [my](https://github.com/crockeo/nvim)
-[recent](https://github.com/crockeo/orgmode-nvim) [work](https://github.com/crockeo/tasq), I moved
+[recent](https://github.com/crockeo/orgmode-nvim) work, I moved
 away from [Emacs](https://www.gnu.org/software/emacs/) for performance reasons, but deeply missed
 orgmode. I recently started learning Taskwarrior to decouple my task management from my editor, but
 I found a frustrating missing feature: there was no way to associate notes with a task out of the
