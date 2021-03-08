@@ -6,7 +6,7 @@ use std::os::raw::c_char;
 use std::ptr::null_mut;
 use std::slice;
 use std::str;
-use std::sync::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 use block::ConcreteBlock;
 use chrono::{DateTime, Datelike, TimeZone, Timelike};
@@ -68,19 +68,25 @@ impl EventStore {
     }
 
     pub fn request_permission(&mut self) -> EKResult<()> {
-        let has_permission = Mutex::new(Ok(false));
-        let has_permission_cond = Condvar::new();
-        let completion_block = ConcreteBlock::new(|granted: bool, ns_error: *mut Object| {
-            let mut lock = has_permission.lock().unwrap();
-            if ns_error != null_mut() {
-                unsafe {
-                    *lock = Err(EKError::from_ns_error(ns_error));
+        let has_permission = Arc::new(Mutex::new(Ok(false)));
+        let has_permission_cond = Arc::new(Condvar::new());
+        let completion_block;
+        {
+            let has_permission = has_permission.clone();
+            let has_permission_cond = has_permission_cond.clone();
+            completion_block = ConcreteBlock::new(move |granted: bool, ns_error: *mut Object| {
+                let mut lock = has_permission.lock().unwrap();
+                if ns_error != null_mut() {
+                    unsafe {
+                        *lock = Err(EKError::from_ns_error(ns_error));
+                    }
+                } else {
+                    *lock = Ok(granted);
                 }
-            } else {
-                *lock = Ok(granted);
-            }
-            has_permission_cond.notify_one();
-        });
+                has_permission_cond.notify_one();
+            })
+            .copy();
+        }
 
         let lock = has_permission.lock().unwrap();
         unsafe {
