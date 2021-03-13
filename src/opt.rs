@@ -20,7 +20,7 @@ struct ProtoOpt {
     #[structopt(long, default_value = "~/.taskn")]
     root_dir: String,
 
-    #[structopt(long, default_value = "edit")]
+    #[structopt(default_value = "edit")]
     command: Command,
 
     /// Any remaining arguments are passed along to taskwarrior while selecting tasks.
