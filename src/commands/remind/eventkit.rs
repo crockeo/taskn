@@ -11,6 +11,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use block::ConcreteBlock;
 use chrono::{DateTime, Datelike, TimeZone, Timelike};
 use objc::runtime::Object;
+use objc::{class, msg_send, sel, sel_impl};
 
 // NOTE:
 //   - calendarItemWithIdentifier to get a reminder

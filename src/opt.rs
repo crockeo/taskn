@@ -1,7 +1,8 @@
 use std::env;
-use std::str::FromStr;
 
 use structopt::StructOpt;
+
+use crate::commands::Command;
 
 #[derive(StructOpt)]
 #[structopt(name = "taskn", about = "Taskwarrior task annotation helper")]
@@ -58,23 +59,5 @@ impl Opt {
 
     pub fn from_args() -> Self {
         Self::from_proto_opt(ProtoOpt::from_args())
-    }
-}
-
-pub enum Command {
-    Edit,
-    Remind,
-}
-
-impl FromStr for Command {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use Command::*;
-        match s {
-            "edit" => Ok(Edit),
-            "remind" => Ok(Remind),
-            _ => Err(format!("failed to parse Command from '{}'", s)),
-        }
     }
 }
