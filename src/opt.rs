@@ -1,4 +1,5 @@
 use std::env;
+use std::str::FromStr;
 
 use structopt::StructOpt;
 
@@ -22,7 +23,7 @@ struct ProtoOpt {
     root_dir: String,
 
     #[structopt(default_value = "edit")]
-    command: Command,
+    command: String,
 
     /// Any remaining arguments are passed along to taskwarrior while selecting tasks.
     args: Vec<String>,
@@ -48,12 +49,25 @@ impl Opt {
 
         let root_dir = shellexpand::tilde(&proto_opt.root_dir).to_string();
 
+        let command;
+        let args;
+        match Command::from_str(&proto_opt.command) {
+            Ok(cmd) => {
+                command = cmd;
+                args = proto_opt.args;
+            }
+            Err(_) => {
+                command = Command::Edit;
+                args = [&[proto_opt.command], &proto_opt.args[..]].concat();
+            }
+        }
+
         Opt {
             editor,
             file_format: proto_opt.file_format,
             root_dir,
-            command: proto_opt.command,
-            args: proto_opt.args,
+            command,
+            args,
         }
     }
 
