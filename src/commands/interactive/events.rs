@@ -15,8 +15,8 @@ pub enum Event {
 pub struct Events {
     rx: mpsc::Receiver<Event>,
 
-    input_thread: thread::JoinHandle<()>,
-    signal_thread: thread::JoinHandle<()>,
+    _input_thread: thread::JoinHandle<()>,
+    _signal_thread: thread::JoinHandle<()>,
 }
 
 impl Events {
@@ -24,8 +24,8 @@ impl Events {
         let (tx, rx) = mpsc::channel();
         Self {
             rx,
-            input_thread: make_input_thread(tx.clone()),
-            signal_thread: make_signal_thread(tx.clone()),
+            _input_thread: make_input_thread(tx.clone()),
+            _signal_thread: make_signal_thread(tx.clone()),
         }
     }
 
