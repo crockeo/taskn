@@ -1,26 +1,16 @@
 mod events;
 
+use std::fs::File;
+use std::io::{self, Read, Stdout};
 use std::path::PathBuf;
-use std::{
-    fs::File,
-    io::{self, Read, Stdout},
-};
 
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
-use tui::{
-    backend::TermionBackend,
-    style::{Modifier, Style},
-    widgets::StatefulWidget,
-};
-use tui::{
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, List, ListItem, ListState},
-};
-use tui::{
-    widgets::{Borders, Paragraph},
-    Terminal,
-};
+use tui::backend::TermionBackend;
+use tui::layout::{Constraint, Direction, Layout};
+use tui::style::{Modifier, Style};
+use tui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use tui::Terminal;
 
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
