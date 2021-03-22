@@ -102,7 +102,7 @@ impl Task {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct ParsableDateTime(pub DateTime<Local>);
 
 impl<'de> Deserialize<'de> for ParsableDateTime {
