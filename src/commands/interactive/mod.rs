@@ -1,15 +1,25 @@
 mod events;
 
-use std::io::{self, Stdout};
+use std::path::PathBuf;
+use std::{
+    fs::File,
+    io::{self, Read, Stdout},
+};
 
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
-use tui::widgets::{List, ListItem, ListState};
-use tui::Terminal;
 use tui::{
     backend::TermionBackend,
     style::{Modifier, Style},
     widgets::StatefulWidget,
+};
+use tui::{
+    layout::{Constraint, Direction, Layout},
+    widgets::{Block, List, ListItem, ListState},
+};
+use tui::{
+    widgets::{Borders, Paragraph},
+    Terminal,
 };
 
 use crate::opt::Opt;
@@ -47,7 +57,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut taskwarrior_args = opt.args;
+    let mut taskwarrior_args = opt.args.clone();
     taskwarrior_args.push("(status:pending or status:waiting)".to_string());
 
     // clear screen
@@ -57,7 +67,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     let mut tasks = fetch_tasks(&taskwarrior_args)?;
     let mut mode = Mode::Normal(NormalState::default());
     loop {
-        mode.render(&mut terminal, &tasks)?;
+        mode.render(&opt, &mut terminal, &tasks)?;
         match events.next()? {
             Event::Key(key) => match key {
                 Key::Ctrl('c') => break,
@@ -86,9 +96,9 @@ enum Mode {
 }
 
 impl Mode {
-    fn render(&mut self, terminal: &mut Term, tasks: &[Task]) -> io::Result<()> {
+    fn render(&mut self, opt: &Opt, terminal: &mut Term, tasks: &[Task]) -> io::Result<()> {
         match self {
-            Mode::Normal(state) => state.render(terminal, tasks),
+            Mode::Normal(state) => state.render(opt, terminal, tasks),
         }
     }
 
@@ -107,44 +117,73 @@ struct NormalState {
 }
 
 impl NormalState {
-    fn render(&mut self, terminal: &mut Term, tasks: &[Task]) -> io::Result<()> {
+    fn render(&mut self, opt: &Opt, terminal: &mut Term, tasks: &[Task]) -> io::Result<()> {
+        let selected = self.selected();
+        let contents = {
+            let path = PathBuf::new()
+                .join(&opt.root_dir)
+                .join(&tasks[selected].uuid)
+                .with_extension(&opt.file_format);
+
+            match File::open(path) {
+                Err(e) if e.kind() == io::ErrorKind::NotFound => "".to_string(),
+                Err(e) => return Err(e),
+                Ok(mut file) => {
+                    let mut buffer = String::new();
+                    file.read_to_string(&mut buffer)?;
+                    buffer
+                }
+            }
+        };
+
         terminal.draw(|frame| {
+            let layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+                .split(frame.size());
+
             let items: Vec<ListItem> = tasks
                 .iter()
                 .map(|task| ListItem::new(task.description.as_str()))
                 .collect();
 
-            frame.render_stateful_widget(
-                List::new(items)
-                    .highlight_style(Style::default().add_modifier(Modifier::UNDERLINED)),
-                frame.size(),
-                &mut self.list_state,
-            )
+            // show all of the tasks
+            let list = List::new(items)
+                .block(Block::default().title("Tasks").borders(Borders::ALL))
+                .highlight_style(Style::default().add_modifier(Modifier::UNDERLINED));
+
+            frame.render_stateful_widget(list, layout[0], &mut self.list_state);
+
+            // preview the current highlighted task's notes
+            let paragraph = Paragraph::new(contents)
+                .block(Block::default().title("Preview").borders(Borders::ALL));
+            frame.render_widget(paragraph, layout[1])
         })
     }
 
     fn handle_key(&mut self, key: Key, tasks: &[Task]) -> io::Result<()> {
         match key {
             Key::Up => {
-                let mut selected = match self.list_state.selected() {
-                    None => 0,
-                    Some(selected) => selected,
-                };
+                let mut selected = self.selected();
                 if selected == 0 {
                     selected = tasks.len();
                 }
                 self.list_state.select(Some(selected - 1));
             }
             Key::Down => {
-                let selected = match self.list_state.selected() {
-                    None => 0,
-                    Some(selected) => selected,
-                };
+                let selected = self.selected();
                 self.list_state.select(Some((selected + 1) % tasks.len()));
             }
             _ => {}
         }
         Ok(())
+    }
+
+    fn selected(&self) -> usize {
+        match self.list_state.selected() {
+            None => 0,
+            Some(selected) => selected,
+        }
     }
 }
 
