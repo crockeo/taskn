@@ -3,6 +3,7 @@ mod events;
 use std::fs::File;
 use std::io::{self, Read, Stdout};
 use std::path::PathBuf;
+use std::process::Command;
 
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
@@ -15,6 +16,17 @@ use tui::Terminal;
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
 use events::{Event, Events};
+
+// NOTE: if you're here looking at this code
+// and you're thinking to yourself
+// "hey this is awful"
+// well congratulations, you're in good company.
+//
+// this is in that early early early stage
+// of programming where you're trying to explore
+// whatever it is that you want to make
+//
+// bear with me as it continues to be ugly (for now)
 
 // !!!feature brainstorm!!!
 //
@@ -61,7 +73,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
         match events.next()? {
             Event::Key(key) => match key {
                 Key::Ctrl('c') => break,
-                key => mode = mode.handle_key(key, &tasks)?,
+                key => mode = mode.handle_key(&opt, key, &tasks)?,
             },
             Event::Resize => continue,
         }
@@ -92,10 +104,10 @@ impl Mode {
         }
     }
 
-    fn handle_key(self, key: Key, tasks: &[Task]) -> io::Result<Mode> {
+    fn handle_key(self, opt: &Opt, key: Key, tasks: &[Task]) -> io::Result<Mode> {
         Ok(match self {
             Mode::Normal(mut state) => {
-                state.handle_key(key, tasks)?;
+                state.handle_key(opt, key, tasks)?;
                 Mode::Normal(state)
             }
         })
@@ -151,7 +163,7 @@ impl NormalState {
         })
     }
 
-    fn handle_key(&mut self, key: Key, tasks: &[Task]) -> io::Result<()> {
+    fn handle_key(&mut self, opt: &Opt, key: Key, tasks: &[Task]) -> io::Result<()> {
         match key {
             Key::Up => {
                 let mut selected = self.selected();
@@ -163,6 +175,15 @@ impl NormalState {
             Key::Down => {
                 let selected = self.selected();
                 self.list_state.select(Some((selected + 1) % tasks.len()));
+            }
+            Key::Char('\n') => {
+                // TODO: integrate this with the existing edit command so that the behavior is
+                // shared
+                let path = PathBuf::new()
+                    .join(&opt.root_dir)
+                    .join(&tasks[self.selected()].uuid)
+                    .with_extension(&opt.file_format);
+                Command::new(&opt.editor).arg(path).status()?;
             }
             _ => {}
         }
