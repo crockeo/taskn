@@ -179,11 +179,20 @@ impl NormalState {
             Key::Char('\n') => {
                 // TODO: integrate this with the existing edit command so that the behavior is
                 // shared
-                let path = PathBuf::new()
-                    .join(&opt.root_dir)
-                    .join(&tasks[self.selected()].uuid)
-                    .with_extension(&opt.file_format);
-                Command::new(&opt.editor).arg(path).status()?;
+                //
+                // TODO: make it so this can peacefully coexist alongside the stdin thread
+                // right now the stdin thread either panics, if we don't lock, or buffers
+                // all of the input if we do lock
+                //
+                // so just figure that out :)
+                // let path = PathBuf::new()
+                //     .join(&opt.root_dir)
+                //     .join(&tasks[self.selected()].uuid)
+                //     .with_extension(&opt.file_format);
+
+                // let stdin = io::stdin();
+                // let handle = stdin.lock();
+                // Command::new(&opt.editor).arg(path).status()?;
             }
             _ => {}
         }
