@@ -1,5 +1,6 @@
 pub mod edit;
 pub mod interactive;
+pub mod order;
 pub mod remind;
 
 use std::io;
@@ -11,6 +12,7 @@ use crate::opt::Opt;
 pub enum Command {
     Edit,
     Interactive,
+    Order,
     Remind,
 }
 
@@ -20,6 +22,7 @@ impl Command {
         match self {
             Edit => edit::execute(opt),
             Interactive => interactive::execute(opt),
+            Order => order::execute(opt),
             Remind => remind::execute(opt),
         }
     }
@@ -33,6 +36,7 @@ impl FromStr for Command {
         match s {
             "edit" => Ok(Edit),
             "interactive" => Ok(Interactive),
+            "order" => Ok(Order),
             "remind" => Ok(Remind),
             _ => Err(format!("failed to parse Command from '{}'", s)),
         }

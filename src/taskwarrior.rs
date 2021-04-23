@@ -15,6 +15,7 @@ pub struct Task {
     pub id: usize,
     pub description: String,
     pub uuid: String,
+    pub estimate: Option<i32>,
     pub tags: Option<Vec<String>>,
     pub wait: Option<ParsableDateTime>,
     pub taskn_reminder_uuid: Option<String>,
@@ -44,9 +45,29 @@ impl Task {
 
         match serde_json::from_str::<Vec<Self>>(&output) {
             // TODO: report error here
-            Err(_) => Err(io::Error::new(io::ErrorKind::InvalidData, "")),
+            Err(e) => {
+                println!("{:?}", e);
+                Err(io::Error::new(io::ErrorKind::InvalidData, ""))
+            }
             Ok(tasks) => Ok(tasks),
         }
+    }
+
+    pub fn set_estimate(&mut self, estimate: Option<i32>) -> io::Result<()> {
+        let estimate_arg;
+        if let Some(estimate) = estimate {
+            estimate_arg = format!("estimate:{}", estimate);
+        } else {
+            estimate_arg = "estimate:".to_string();
+        }
+
+        Command::new("task")
+            .arg(&self.uuid)
+            .arg("modify")
+            .arg(estimate_arg)
+            .output()?;
+
+        Ok(())
     }
 
     /// Defines a user defined attribute (UDA) that stores the UUID of an operating system reminder
