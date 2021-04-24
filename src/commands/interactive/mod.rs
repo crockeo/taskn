@@ -50,6 +50,16 @@ use events::{Event, Events};
 //   top-to-bottom
 //
 // - preview taskn notes when you select a task
+//
+// let's think about state transitions a little bit more:
+//   - some central state concept (CommonState) which things can mutate
+//   - a way to build a CommonState from TaskWarrior
+//   - and a way to save CommonState to TaskWarrior
+//   - sub-state that represents the current mode + additional state associated with that mode
+//   - each action produces:
+//     - a sub-state (so we can transition)
+//     - whether we need to reload entirely
+//     - whether we need to flush state
 
 type Term = Terminal<TermionBackend<RawTerminal<Stdout>>>;
 
@@ -65,33 +75,30 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     println!("\0{}[2J", 27 as char);
 
     let events = Events::new();
-    let mut tasks = fetch_tasks(&taskwarrior_args)?;
+    let mut common_state = CommonState::load_from_taskwarrior()?;
     let mut mode = Mode::Normal(NormalState::default());
     loop {
-        mode.render(&opt, &mut terminal, &tasks)?;
+        mode.render(&opt, &mut terminal, &common_state);
         match events.next()? {
             Event::Key(key) => match key {
                 Key::Ctrl('c') => break,
-                key => mode = mode.handle_key(&opt, key, &tasks)?,
+                key => {
+                    let result = mode.handle_key(&opt, &mut common_state, key)?;
+                    mode = result.new_mode;
+                    if result.should_flush {
+                        common_state = common_state.flush_to_taskwarrior()?;
+                    } else if result.should_load {
+                        common_state = CommonState::load_from_taskwarrior()?;
+                    }
+                }
             },
             Event::Resize => continue,
         }
-        // TODO: don't just refetch everything when we re-render :)
-        tasks = fetch_tasks(&taskwarrior_args)?;
     }
 
     Ok(())
 }
 
-// let's think about state transitions a little bit more:
-//   - some central state concept (CommonState) which things can mutate
-//   - a way to build a CommonState from TaskWarrior
-//   - and a way to save CommonState to TaskWarrior
-//   - sub-state that represents the current mode + additional state associated with that mode
-//   - each action produces:
-//     - a sub-state (so we can transition)
-//     - whether we need to reload entirely
-//     - whether we need to flush state
 struct CommonState {
     tasks: Vec<Task>,
 }
@@ -104,20 +111,18 @@ impl CommonState {
     }
 
     fn flush_to_taskwarrior(self) -> io::Result<Self> {
-        for task in self.tasks.into_iter() {
+        for (order, mut task) in self.tasks.into_iter().enumerate() {
+            task.estimate = Some(order as i32);
             task.save()?;
         }
         Self::load_from_taskwarrior()
     }
 }
 
-fn fetch_tasks(args: &[String]) -> io::Result<Vec<Task>> {
-    // TODO: right now this function ensures our tasks are ordered by time
-    // but i'd really prefer to articulate this logic in a way that doesn't
-    // produce such far-flung dependencies.
-    let mut tasks = Task::get(args.iter())?;
-    tasks.sort_by(|a, b| a.wait.partial_cmp(&b.wait).unwrap());
-    Ok(tasks)
+struct ActionResult {
+    new_mode: Mode,
+    should_load: bool,
+    should_flush: bool,
 }
 
 enum Mode {
@@ -125,17 +130,31 @@ enum Mode {
 }
 
 impl Mode {
-    fn render(&mut self, opt: &Opt, terminal: &mut Term, tasks: &[Task]) -> io::Result<()> {
+    fn render(
+        &mut self,
+        opt: &Opt,
+        terminal: &mut Term,
+        common_state: &CommonState,
+    ) -> io::Result<()> {
         match self {
-            Mode::Normal(state) => state.render(opt, terminal, tasks),
+            Mode::Normal(state) => state.render(opt, terminal, &common_state.tasks),
         }
     }
 
-    fn handle_key(self, opt: &Opt, key: Key, tasks: &[Task]) -> io::Result<Mode> {
+    fn handle_key(
+        self,
+        opt: &Opt,
+        common_state: &mut CommonState,
+        key: Key,
+    ) -> io::Result<ActionResult> {
         Ok(match self {
             Mode::Normal(mut state) => {
-                state.handle_key(opt, key, tasks)?;
-                Mode::Normal(state)
+                state.handle_key(opt, key, &common_state.tasks)?;
+                ActionResult {
+                    new_mode: Mode::Normal(state),
+                    should_load: false,
+                    should_flush: false,
+                }
             }
         })
     }
