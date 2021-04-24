@@ -78,7 +78,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     let mut common_state = CommonState::load_from_taskwarrior()?;
     let mut mode = Mode::Normal(NormalState::default());
     loop {
-        mode.render(&opt, &mut terminal, &common_state);
+        mode.render(&opt, &mut terminal, &common_state)?;
         match events.next()? {
             Event::Key(key) => match key {
                 Key::Ctrl('c') => break,
@@ -100,6 +100,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
 }
 
 struct CommonState {
+    list_state: ListState,
     tasks: Vec<Task>,
 }
 
@@ -107,7 +108,10 @@ impl CommonState {
     fn load_from_taskwarrior() -> io::Result<Self> {
         let mut tasks = Task::get(["status:pending"].iter())?;
         tasks.sort_by(|a, b| a.estimate.partial_cmp(&b.estimate).unwrap());
-        Ok(CommonState { tasks })
+        Ok(CommonState {
+            list_state: ListState::default(),
+            tasks,
+        })
     }
 
     fn flush_to_taskwarrior(self) -> io::Result<Self> {
@@ -115,7 +119,9 @@ impl CommonState {
             task.estimate = Some(order as i32);
             task.save()?;
         }
-        Self::load_from_taskwarrior()
+        let mut new_self = Self::load_from_taskwarrior()?;
+        new_self.list_state.select(self.list_state.selected());
+        Ok(new_self)
     }
 }
 
