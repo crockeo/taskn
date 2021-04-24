@@ -15,6 +15,7 @@ pub struct Task {
     pub id: usize,
     pub description: String,
     pub uuid: String,
+    pub status: String,
     pub estimate: Option<i32>,
     pub tags: Option<Vec<String>>,
     pub wait: Option<ParsableDateTime>,
@@ -25,7 +26,11 @@ impl Task {
     /// Saves anything stored inside this Task to taskwarrior.
     pub fn save(&self) -> io::Result<()> {
         let mut command = Command::new("task");
-        command.arg(&self.uuid).arg("modify").arg(&self.description);
+        command
+            .arg(&self.uuid)
+            .arg("modify")
+            .arg(&self.description)
+            .arg(format!("status:{}", self.status));
 
         if let Some(estimate) = self.estimate {
             command.arg(format!("estimate:{}", estimate));

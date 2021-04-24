@@ -143,6 +143,16 @@ struct ActionResult {
     should_flush: bool,
 }
 
+impl Default for ActionResult {
+    fn default() -> Self {
+        ActionResult {
+            new_mode: None,
+            should_load: false,
+            should_flush: false,
+        }
+    }
+}
+
 trait Mode {
     fn render(
         &self,
@@ -190,6 +200,13 @@ impl Mode for Normal {
                 if selected < common_state.tasks.len() - 1 {
                     common_state.list_state.select(Some(selected + 1));
                 }
+            }
+            Key::Char('d') => {
+                return Ok(ActionResult {
+                    new_mode: Some(Box::new(Done)),
+                    should_flush: false,
+                    should_load: false,
+                })
             }
             Key::Char('s') => {
                 return Ok(ActionResult {
@@ -284,6 +301,50 @@ impl Mode for Shift {
             should_flush: false,
             should_load: false,
         })
+    }
+}
+
+/// Marks a task done as
+struct Done;
+
+impl Mode for Done {
+    fn render(
+        &self,
+        opt: &Opt,
+        common_state: &mut CommonState,
+        terminal: &mut Term,
+    ) -> io::Result<()> {
+        // TODO: set up dialog-based rendering
+        common_render(opt, common_state, terminal, &[Modifier::DIM])
+    }
+
+    fn update(
+        &mut self,
+        opt: &Opt,
+        common_state: &mut CommonState,
+        key: Key,
+    ) -> io::Result<ActionResult> {
+        match key {
+            Key::Esc | Key::Ctrl('f') => {
+                return Ok(ActionResult {
+                    new_mode: Some(Box::new(Normal)),
+                    should_flush: false,
+                    should_load: false,
+                })
+            }
+            Key::Char('\n') => {
+                // TODO: mark the current highlighted task as done
+                let selected = common_state.selected();
+                common_state.tasks[selected].status = "done".to_string();
+                return Ok(ActionResult {
+                    new_mode: Some(Box::new(Normal)),
+                    should_flush: true,
+                    should_load: false,
+                });
+            }
+            _ => {}
+        }
+        Ok(ActionResult::default())
     }
 }
 
