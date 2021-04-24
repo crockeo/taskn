@@ -110,10 +110,13 @@ impl CommonState {
     fn load_from_taskwarrior() -> io::Result<Self> {
         let mut tasks = Task::get(["status:pending"].iter())?;
         tasks.sort_by(|a, b| a.estimate.partial_cmp(&b.estimate).unwrap());
-        Ok(CommonState {
-            list_state: ListState::default(),
-            tasks,
-        })
+
+        let mut list_state = ListState::default();
+        if tasks.len() > 0 {
+            list_state.select(Some(0));
+        }
+
+        Ok(CommonState { list_state, tasks })
     }
 
     fn flush_to_taskwarrior(self) -> io::Result<Self> {
@@ -167,7 +170,7 @@ impl Mode for Normal {
         common_state: &mut CommonState,
         terminal: &mut Term,
     ) -> io::Result<()> {
-        common_render(opt, common_state, terminal)
+        common_render(opt, common_state, terminal, &[Modifier::DIM])
     }
 
     fn update(
@@ -176,25 +179,21 @@ impl Mode for Normal {
         common_state: &mut CommonState,
         key: Key,
     ) -> io::Result<ActionResult> {
+        let selected = common_state.selected();
         match key {
             Key::Up => {
-                let mut selected = common_state.selected();
-                if selected == 0 {
-                    selected = common_state.tasks.len();
+                if selected > 0 {
+                    common_state.list_state.select(Some(selected - 1));
                 }
-                common_state.list_state.select(Some(selected - 1));
             }
             Key::Down => {
-                let selected = common_state.selected();
-                common_state
-                    .list_state
-                    .select(Some((selected + 1) % common_state.tasks.len()));
+                if selected < common_state.tasks.len() - 1 {
+                    common_state.list_state.select(Some(selected + 1));
+                }
             }
-            // TODO: come up with a keybind that doesn't mean i have to move my right hand off of
-            // the arrow keys
-            Key::Char('m') => {
+            Key::Char('s') => {
                 return Ok(ActionResult {
-                    new_mode: Some(Box::new(Move)),
+                    new_mode: Some(Box::new(Shift::new(selected))),
                     should_flush: false,
                     should_load: false,
                 })
@@ -211,17 +210,31 @@ impl Mode for Normal {
 
 /// Allows users to move a selected task (as selected in [Normal] mode) to a different ordering.
 /// Used to modifying the order in which tasks appear in the default TaskWarrior report.
-struct Move;
+struct Shift {
+    original_pos: usize,
+}
 
-impl Mode for Move {
+impl Shift {
+    fn new(current_pos: usize) -> Self {
+        Self {
+            original_pos: current_pos,
+        }
+    }
+}
+
+impl Mode for Shift {
     fn render(
         &self,
         opt: &Opt,
         common_state: &mut CommonState,
         terminal: &mut Term,
     ) -> io::Result<()> {
-        // TODO: render this in a way that shows it's different from the normal mode
-        common_render(opt, common_state, terminal)
+        common_render(
+            opt,
+            common_state,
+            terminal,
+            &[Modifier::DIM, Modifier::UNDERLINED],
+        )
     }
 
     fn update(
@@ -231,35 +244,32 @@ impl Mode for Move {
         key: Key,
     ) -> io::Result<ActionResult> {
         match key {
-            // TODO: when these rotate around they have unexpected behavior, special case it to not
-            // accidentally rotate the end to the beginning.
             Key::Up => {
                 let selected = common_state.selected();
-                let next_pos;
-                if selected == 0 {
-                    next_pos = common_state.tasks.len() - 1;
-                } else {
-                    next_pos = selected - 1;
+                if selected > 0 {
+                    common_state.tasks.swap(selected, selected - 1);
+                    common_state.list_state.select(Some(selected - 1));
                 }
-
-                common_state.tasks.swap(selected, next_pos);
-                common_state.list_state.select(Some(next_pos));
             }
             Key::Down => {
                 let selected = common_state.selected();
-                let next_pos = (selected + 1) % common_state.tasks.len();
-                common_state.tasks.swap(selected, next_pos);
-                common_state.list_state.select(Some(next_pos));
+                if selected < common_state.tasks.len() - 1 {
+                    common_state.tasks.swap(selected, selected + 1);
+                    common_state.list_state.select(Some(selected + 1));
+                }
             }
-            Key::Char('\n') => {
+            Key::Char('\n') | Key::Char('s') => {
                 return Ok(ActionResult {
                     new_mode: Some(Box::new(Normal)),
                     should_flush: true,
                     should_load: false,
                 })
             }
-            Key::Esc | Key::Ctrl('f') | Key::Char('q') => {
-                // TODO: reset position before popping out of Move
+            Key::Esc | Key::Ctrl('f') => {
+                let selected = common_state.selected();
+                let task = common_state.tasks.remove(selected);
+                common_state.tasks.insert(self.original_pos, task);
+                common_state.list_state.select(Some(self.original_pos));
                 return Ok(ActionResult {
                     new_mode: Some(Box::new(Normal)),
                     should_flush: false,
@@ -277,7 +287,12 @@ impl Mode for Move {
     }
 }
 
-fn common_render(opt: &Opt, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
+fn common_render(
+    opt: &Opt,
+    common_state: &mut CommonState,
+    terminal: &mut Term,
+    selected_modifiers: &[Modifier],
+) -> io::Result<()> {
     let selected = common_state.selected();
     let contents = {
         let path = PathBuf::new()
@@ -309,9 +324,13 @@ fn common_render(opt: &Opt, common_state: &mut CommonState, terminal: &mut Term)
             .collect();
 
         // show all of the tasks
+        let mut highlight_style = Style::default();
+        for modifier in selected_modifiers.iter() {
+            highlight_style = highlight_style.add_modifier(*modifier);
+        }
         let list = List::new(items)
             .block(Block::default().title("Tasks").borders(Borders::ALL))
-            .highlight_style(Style::default().add_modifier(Modifier::UNDERLINED));
+            .highlight_style(highlight_style);
 
         frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
 
