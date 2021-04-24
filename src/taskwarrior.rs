@@ -22,6 +22,34 @@ pub struct Task {
 }
 
 impl Task {
+    /// Saves anything stored inside this Task to taskwarrior.
+    pub fn save(&self) -> io::Result<()> {
+        let mut command = Command::new("task");
+        command.arg(&self.uuid).arg("modify").arg(&self.description);
+
+        if let Some(estimate) = self.estimate {
+            command.arg(format!("estimate:{}", estimate));
+        } else {
+            command.arg("estimate:");
+        }
+
+        if let Some(_wait) = &self.wait {
+            // TODO: update wait when it exists
+            // command.arg(format!("wait:{}", wait));
+        } else {
+            command.arg("wait:");
+        }
+
+        if let Some(taskn_reminder_uuid) = &self.taskn_reminder_uuid {
+            command.arg(format!("taskn_reminder_uuid:{}", taskn_reminder_uuid));
+        } else {
+            command.arg("taskn_reminder_uuid:");
+        }
+
+        let _ = command.output()?;
+        Ok(())
+    }
+
     pub fn get<'a, S: ToString, I: Iterator<Item = S>>(
         taskwarrior_args: I,
     ) -> io::Result<Vec<Self>> {

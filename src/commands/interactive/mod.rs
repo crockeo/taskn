@@ -3,7 +3,6 @@ mod events;
 use std::fs::File;
 use std::io::{self, Read, Stdout};
 use std::path::PathBuf;
-use std::process::Command;
 
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
@@ -82,6 +81,34 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+// let's think about state transitions a little bit more:
+//   - some central state concept (CommonState) which things can mutate
+//   - a way to build a CommonState from TaskWarrior
+//   - and a way to save CommonState to TaskWarrior
+//   - sub-state that represents the current mode + additional state associated with that mode
+//   - each action produces:
+//     - a sub-state (so we can transition)
+//     - whether we need to reload entirely
+//     - whether we need to flush state
+struct CommonState {
+    tasks: Vec<Task>,
+}
+
+impl CommonState {
+    fn load_from_taskwarrior() -> io::Result<Self> {
+        let mut tasks = Task::get(["status:pending"].iter())?;
+        tasks.sort_by(|a, b| a.estimate.partial_cmp(&b.estimate).unwrap());
+        Ok(CommonState { tasks })
+    }
+
+    fn flush_to_taskwarrior(self) -> io::Result<Self> {
+        for task in self.tasks.into_iter() {
+            task.save()?;
+        }
+        Self::load_from_taskwarrior()
+    }
 }
 
 fn fetch_tasks(args: &[String]) -> io::Result<Vec<Task>> {
