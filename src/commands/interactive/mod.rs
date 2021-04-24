@@ -147,6 +147,7 @@ trait Mode {
         common_state: &mut CommonState,
         terminal: &mut Term,
     ) -> io::Result<()>;
+
     fn update(
         &mut self,
         opt: &Opt,
@@ -155,6 +156,8 @@ trait Mode {
     ) -> io::Result<ActionResult>;
 }
 
+/// The default interactive mode. Does not modify any data. Allows users to look through their
+/// tasks alongside their associated taskn notes.
 struct Normal;
 
 impl Mode for Normal {
@@ -164,48 +167,7 @@ impl Mode for Normal {
         common_state: &mut CommonState,
         terminal: &mut Term,
     ) -> io::Result<()> {
-        let selected = common_state.selected();
-        let contents = {
-            let path = PathBuf::new()
-                .join(&opt.root_dir)
-                .join(&common_state.tasks[selected].uuid)
-                .with_extension(&opt.file_format);
-
-            match File::open(path) {
-                Err(e) if e.kind() == io::ErrorKind::NotFound => "".to_string(),
-                Err(e) => return Err(e),
-                Ok(mut file) => {
-                    let mut buffer = String::new();
-                    file.read_to_string(&mut buffer)?;
-                    buffer
-                }
-            }
-        };
-
-        terminal.draw(|frame| {
-            let layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
-                .split(frame.size());
-
-            let items: Vec<ListItem> = common_state
-                .tasks
-                .iter()
-                .map(|task| ListItem::new(task.description.as_str()))
-                .collect();
-
-            // show all of the tasks
-            let list = List::new(items)
-                .block(Block::default().title("Tasks").borders(Borders::ALL))
-                .highlight_style(Style::default().add_modifier(Modifier::UNDERLINED));
-
-            frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
-
-            // preview the current highlighted task's notes
-            let paragraph = Paragraph::new(contents)
-                .block(Block::default().title("Preview").borders(Borders::ALL));
-            frame.render_widget(paragraph, layout[1])
-        })
+        common_render(opt, common_state, terminal)
     }
 
     fn update(
@@ -228,6 +190,15 @@ impl Mode for Normal {
                     .list_state
                     .select(Some((selected + 1) % common_state.tasks.len()));
             }
+            // TODO: come up with a keybind that doesn't mean i have to move my right hand off of
+            // the arrow keys
+            Key::Char('m') => {
+                return Ok(ActionResult {
+                    new_mode: Some(Box::new(Move)),
+                    should_flush: false,
+                    should_load: false,
+                })
+            }
             _ => {}
         }
         Ok(ActionResult {
@@ -236,4 +207,117 @@ impl Mode for Normal {
             should_load: false,
         })
     }
+}
+
+/// Allows users to move a selected task (as selected in [Normal] mode) to a different ordering.
+/// Used to modifying the order in which tasks appear in the default TaskWarrior report.
+struct Move;
+
+impl Mode for Move {
+    fn render(
+        &self,
+        opt: &Opt,
+        common_state: &mut CommonState,
+        terminal: &mut Term,
+    ) -> io::Result<()> {
+        // TODO: render this in a way that shows it's different from the normal mode
+        common_render(opt, common_state, terminal)
+    }
+
+    fn update(
+        &mut self,
+        opt: &Opt,
+        common_state: &mut CommonState,
+        key: Key,
+    ) -> io::Result<ActionResult> {
+        match key {
+            // TODO: when these rotate around they have unexpected behavior, special case it to not
+            // accidentally rotate the end to the beginning.
+            Key::Up => {
+                let selected = common_state.selected();
+                let next_pos;
+                if selected == 0 {
+                    next_pos = common_state.tasks.len() - 1;
+                } else {
+                    next_pos = selected - 1;
+                }
+
+                common_state.tasks.swap(selected, next_pos);
+                common_state.list_state.select(Some(next_pos));
+            }
+            Key::Down => {
+                let selected = common_state.selected();
+                let next_pos = (selected + 1) % common_state.tasks.len();
+                common_state.tasks.swap(selected, next_pos);
+                common_state.list_state.select(Some(next_pos));
+            }
+            Key::Char('\n') => {
+                return Ok(ActionResult {
+                    new_mode: Some(Box::new(Normal)),
+                    should_flush: true,
+                    should_load: false,
+                })
+            }
+            Key::Esc | Key::Ctrl('f') | Key::Char('q') => {
+                // TODO: reset position before popping out of Move
+                return Ok(ActionResult {
+                    new_mode: Some(Box::new(Normal)),
+                    should_flush: false,
+                    should_load: false,
+                });
+            }
+            _ => {}
+        }
+
+        Ok(ActionResult {
+            new_mode: None,
+            should_flush: false,
+            should_load: false,
+        })
+    }
+}
+
+fn common_render(opt: &Opt, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
+    let selected = common_state.selected();
+    let contents = {
+        let path = PathBuf::new()
+            .join(&opt.root_dir)
+            .join(&common_state.tasks[selected].uuid)
+            .with_extension(&opt.file_format);
+
+        match File::open(path) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => "".to_string(),
+            Err(e) => return Err(e),
+            Ok(mut file) => {
+                let mut buffer = String::new();
+                file.read_to_string(&mut buffer)?;
+                buffer
+            }
+        }
+    };
+
+    terminal.draw(|frame| {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+            .split(frame.size());
+
+        let items: Vec<ListItem> = common_state
+            .tasks
+            .iter()
+            .map(|task| ListItem::new(task.description.as_str()))
+            .collect();
+
+        // show all of the tasks
+        let list = List::new(items)
+            .block(Block::default().title("Tasks").borders(Borders::ALL))
+            .highlight_style(Style::default().add_modifier(Modifier::UNDERLINED));
+
+        frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
+
+        // preview the current highlighted task's notes
+        let paragraph =
+            Paragraph::new(contents).block(Block::default().title("Preview").borders(Borders::ALL));
+        frame.render_widget(paragraph, layout[1])
+    })
 }
