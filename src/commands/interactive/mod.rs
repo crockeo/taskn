@@ -76,15 +76,17 @@ pub fn execute(opt: Opt) -> io::Result<()> {
 
     let events = Events::new();
     let mut common_state = CommonState::load_from_taskwarrior()?;
-    let mut mode = Mode::Normal(NormalState::default());
+    let mut mode: Box<dyn Mode> = Box::new(Normal);
     loop {
-        mode.render(&opt, &mut terminal, &common_state)?;
+        mode.render(&opt, &mut common_state, &mut terminal)?;
         match events.next()? {
             Event::Key(key) => match key {
                 Key::Ctrl('c') => break,
                 key => {
-                    let result = mode.handle_key(&opt, &mut common_state, key)?;
-                    mode = result.new_mode;
+                    let result = mode.update(&opt, &mut common_state, key)?;
+                    if let Some(new_mode) = result.new_mode {
+                        mode = new_mode;
+                    }
                     if result.should_flush {
                         common_state = common_state.flush_to_taskwarrior()?;
                     } else if result.should_load {
@@ -123,60 +125,50 @@ impl CommonState {
         new_self.list_state.select(self.list_state.selected());
         Ok(new_self)
     }
+
+    fn selected(&self) -> usize {
+        match self.list_state.selected() {
+            None => 0,
+            Some(selected) => selected,
+        }
+    }
 }
 
 struct ActionResult {
-    new_mode: Mode,
+    new_mode: Option<Box<dyn Mode>>,
     should_load: bool,
     should_flush: bool,
 }
 
-enum Mode {
-    Normal(NormalState),
-}
-
-impl Mode {
+trait Mode {
     fn render(
-        &mut self,
+        &self,
         opt: &Opt,
+        common_state: &mut CommonState,
         terminal: &mut Term,
-        common_state: &CommonState,
-    ) -> io::Result<()> {
-        match self {
-            Mode::Normal(state) => state.render(opt, terminal, &common_state.tasks),
-        }
-    }
-
-    fn handle_key(
-        self,
+    ) -> io::Result<()>;
+    fn update(
+        &mut self,
         opt: &Opt,
         common_state: &mut CommonState,
         key: Key,
-    ) -> io::Result<ActionResult> {
-        Ok(match self {
-            Mode::Normal(mut state) => {
-                state.handle_key(opt, key, &common_state.tasks)?;
-                ActionResult {
-                    new_mode: Mode::Normal(state),
-                    should_load: false,
-                    should_flush: false,
-                }
-            }
-        })
-    }
+    ) -> io::Result<ActionResult>;
 }
 
-struct NormalState {
-    list_state: ListState,
-}
+struct Normal;
 
-impl NormalState {
-    fn render(&mut self, opt: &Opt, terminal: &mut Term, tasks: &[Task]) -> io::Result<()> {
-        let selected = self.selected();
+impl Mode for Normal {
+    fn render(
+        &self,
+        opt: &Opt,
+        common_state: &mut CommonState,
+        terminal: &mut Term,
+    ) -> io::Result<()> {
+        let selected = common_state.selected();
         let contents = {
             let path = PathBuf::new()
                 .join(&opt.root_dir)
-                .join(&tasks[selected].uuid)
+                .join(&common_state.tasks[selected].uuid)
                 .with_extension(&opt.file_format);
 
             match File::open(path) {
@@ -196,7 +188,8 @@ impl NormalState {
                 .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
                 .split(frame.size());
 
-            let items: Vec<ListItem> = tasks
+            let items: Vec<ListItem> = common_state
+                .tasks
                 .iter()
                 .map(|task| ListItem::new(task.description.as_str()))
                 .collect();
@@ -206,7 +199,7 @@ impl NormalState {
                 .block(Block::default().title("Tasks").borders(Borders::ALL))
                 .highlight_style(Style::default().add_modifier(Modifier::UNDERLINED));
 
-            frame.render_stateful_widget(list, layout[0], &mut self.list_state);
+            frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
 
             // preview the current highlighted task's notes
             let paragraph = Paragraph::new(contents)
@@ -215,54 +208,32 @@ impl NormalState {
         })
     }
 
-    fn handle_key(&mut self, opt: &Opt, key: Key, tasks: &[Task]) -> io::Result<()> {
+    fn update(
+        &mut self,
+        opt: &Opt,
+        common_state: &mut CommonState,
+        key: Key,
+    ) -> io::Result<ActionResult> {
         match key {
             Key::Up => {
-                let mut selected = self.selected();
+                let mut selected = common_state.selected();
                 if selected == 0 {
-                    selected = tasks.len();
+                    selected = common_state.tasks.len();
                 }
-                self.list_state.select(Some(selected - 1));
+                common_state.list_state.select(Some(selected - 1));
             }
             Key::Down => {
-                let selected = self.selected();
-                self.list_state.select(Some((selected + 1) % tasks.len()));
-            }
-            Key::Char('\n') => {
-                // TODO: integrate this with the existing edit command so that the behavior is
-                // shared
-                //
-                // TODO: make it so this can peacefully coexist alongside the stdin thread
-                // right now the stdin thread either panics, if we don't lock, or buffers
-                // all of the input if we do lock
-                //
-                // so just figure that out :)
-                // let path = PathBuf::new()
-                //     .join(&opt.root_dir)
-                //     .join(&tasks[self.selected()].uuid)
-                //     .with_extension(&opt.file_format);
-
-                // let stdin = io::stdin();
-                // let handle = stdin.lock();
-                // Command::new(&opt.editor).arg(path).status()?;
+                let selected = common_state.selected();
+                common_state
+                    .list_state
+                    .select(Some((selected + 1) % common_state.tasks.len()));
             }
             _ => {}
         }
-        Ok(())
-    }
-
-    fn selected(&self) -> usize {
-        match self.list_state.selected() {
-            None => 0,
-            Some(selected) => selected,
-        }
-    }
-}
-
-impl Default for NormalState {
-    fn default() -> Self {
-        let mut list_state = ListState::default();
-        list_state.select(Some(0));
-        Self { list_state }
+        Ok(ActionResult {
+            new_mode: None,
+            should_flush: false,
+            should_load: false,
+        })
     }
 }
