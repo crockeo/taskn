@@ -120,12 +120,20 @@ impl CommonState {
     }
 
     fn flush_to_taskwarrior(self) -> io::Result<Self> {
+        // need to calculate new_selected before into_iter()
+        // because otherwise it would partially move out of self
+        // and cause a compiler error
+        let mut new_selected = self.selected();
         for (order, mut task) in self.tasks.into_iter().enumerate() {
             task.estimate = Some(order as i32);
             task.save()?;
         }
         let mut new_self = Self::load_from_taskwarrior()?;
-        new_self.list_state.select(self.list_state.selected());
+
+        if new_selected >= new_self.tasks.len() {
+            new_selected = new_self.tasks.len() - 1;
+        }
+        new_self.list_state.select(Some(new_selected));
         Ok(new_self)
     }
 
