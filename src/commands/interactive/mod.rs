@@ -5,10 +5,10 @@ use std::io::{self, Stdout};
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
 use tui::backend::TermionBackend;
-use tui::layout::{Constraint, Direction, Layout};
+use tui::layout::{Constraint, Direction, Layout, Rect};
 use tui::style::{Modifier, Style};
 use tui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
-use tui::{Frame, Terminal};
+use tui::Terminal;
 
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
@@ -323,8 +323,18 @@ struct Done;
 impl Mode for Done {
     fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
         terminal.draw(|frame| {
-            // TODO: set up dialog-based rendering
-            common_render(frame, common_state, &[Modifier::DIM])
+            let layout = default_layout(frame);
+            render_tasks(
+                frame,
+                common_state,
+                &[Modifier::DIM, Modifier::CROSSED_OUT],
+                layout[0],
+            );
+
+            let text = "CONFIRM (ENTER) or CANCEL (ESC)";
+            let paragraph = Paragraph::new(text)
+                .block(Block::default().title("Mark Done?").borders(Borders::ALL));
+            frame.render_widget(paragraph, layout[1]);
         })
     }
 
@@ -358,23 +368,37 @@ impl Mode for Done {
     }
 }
 
+type Frame<'a> = tui::Frame<'a, TermionBackend<RawTerminal<Stdout>>>;
+
 fn common_render<'a>(
-    frame: &mut Frame<'a, TermionBackend<RawTerminal<Stdout>>>,
+    frame: &mut Frame<'a>,
     common_state: &mut CommonState,
     selected_modifiers: &[Modifier],
 ) {
-    let layout = Layout::default()
+    let layout = default_layout(frame);
+    render_tasks(frame, common_state, selected_modifiers, layout[0]);
+    render_contents(frame, common_state, layout[1]);
+}
+
+fn default_layout<'a>(frame: &mut Frame<'a>) -> Vec<Rect> {
+    Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
-        .split(frame.size());
+        .split(frame.size())
+}
 
+fn render_tasks<'a>(
+    frame: &mut Frame<'a>,
+    common_state: &mut CommonState,
+    selected_modifiers: &[Modifier],
+    area: Rect,
+) {
     let items: Vec<ListItem> = common_state
         .tasks
         .iter()
         .map(|task| ListItem::new(task.description.as_str()))
         .collect();
 
-    // show all of the tasks
     let mut highlight_style = Style::default();
     for modifier in selected_modifiers.iter() {
         highlight_style = highlight_style.add_modifier(*modifier);
@@ -383,11 +407,13 @@ fn common_render<'a>(
         .block(Block::default().title("Tasks").borders(Borders::ALL))
         .highlight_style(highlight_style);
 
-    frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
+    frame.render_stateful_widget(list, area, &mut common_state.list_state);
+}
 
+fn render_contents<'a>(frame: &mut Frame<'a>, common_state: &mut CommonState, area: Rect) {
     // preview the current highlighted task's notes
     let contents = common_state.selected_contents();
     let paragraph =
         Paragraph::new(contents).block(Block::default().title("Preview").borders(Borders::ALL));
-    frame.render_widget(paragraph, layout[1])
+    frame.render_widget(paragraph, area)
 }
