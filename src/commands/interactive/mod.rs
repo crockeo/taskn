@@ -14,51 +14,6 @@ use crate::opt::Opt;
 use crate::taskwarrior::Task;
 use events::{Event, Events};
 
-// NOTE: if you're here looking at this code
-// and you're thinking to yourself
-// "hey this is awful"
-// well congratulations, you're in good company.
-//
-// this is in that early early early stage
-// of programming where you're trying to explore
-// whatever it is that you want to make
-//
-// bear with me as it continues to be ugly (for now)
-
-// !!!feature brainstorm!!!
-//
-// - modal UI; fewer keystrokes = faster interaction.
-//   after using a UI for a while, you can learn how to interact
-//   so you no longer need to type out full commands
-//   - normal mode
-//     - up + down to nagivate between notes
-//     - enter to open up $EDITOR on the taskn note
-//     - "m" or "e" to enter modify/edit mode (which one?)
-//     - "a" to enter add mode
-//   - edit mode
-//     - ESC / Ctrl-F to exit edit more
-//     - r to toggle +remindme tag
-//     - e change the estimate
-//     - u to change urgency
-//     - p to change project
-//     - t to add/remove tag (normal +/- taskwarrior syntax)
-//
-// - try to build out a joint estimate + urgency ordering system
-//   so that tasks have a consistent order and i can capture
-//   top-to-bottom
-//
-// - preview taskn notes when you select a task
-//
-// let's think about state transitions a little bit more:
-//   - some central state concept (CommonState) which things can mutate
-//   - a way to build a CommonState from TaskWarrior
-//   - and a way to save CommonState to TaskWarrior
-//   - sub-state that represents the current mode + additional state associated with that mode
-//   - each action produces:
-//     - a sub-state (so we can transition)
-//     - whether we need to reload entirely
-//     - whether we need to flush state
-
 type Term = Terminal<TermionBackend<RawTerminal<Stdout>>>;
 
 pub fn execute(opt: Opt) -> io::Result<()> {
