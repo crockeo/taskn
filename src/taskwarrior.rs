@@ -1,6 +1,7 @@
 use std::fmt;
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::path::PathBuf;
 use std::process::Command;
 use std::str;
 
@@ -9,6 +10,8 @@ use chrono::{DateTime, NaiveDateTime, TimeZone};
 use serde::de;
 use serde::Deserialize;
 use shellexpand::tilde;
+
+use crate::opt::Opt;
 
 #[derive(Debug, Deserialize)]
 pub struct Task {
@@ -53,6 +56,24 @@ impl Task {
 
         let _ = command.output()?;
         Ok(())
+    }
+
+    /// Loads the contents of the note associated with a particular Task. Note that this requires
+    /// the [Opt] parameter because it determines where the tasks are saved.
+    pub fn load_contents(&self, opt: &Opt) -> io::Result<String> {
+        let path = PathBuf::new()
+            .join(&opt.root_dir)
+            .join(&self.uuid)
+            .with_extension(&opt.file_format);
+        match File::open(path) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok("".to_string()),
+            Err(e) => Err(e),
+            Ok(mut file) => {
+                let mut buffer = String::new();
+                file.read_to_string(&mut buffer)?;
+                Ok(buffer)
+            }
+        }
     }
 
     pub fn get<'a, S: ToString, I: Iterator<Item = S>>(

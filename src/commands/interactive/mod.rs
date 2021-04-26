@@ -1,8 +1,6 @@
 mod events;
 
-use std::fs::File;
-use std::io::{self, Read, Stdout};
-use std::path::PathBuf;
+use std::io::{self, Stdout};
 
 use termion::event::Key;
 use termion::raw::{IntoRawMode, RawTerminal};
@@ -75,10 +73,10 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     println!("\0{}[2J", 27 as char);
 
     let events = Events::new();
-    let mut common_state = CommonState::load_from_taskwarrior()?;
+    let mut common_state = CommonState::load_from_taskwarrior(&opt)?;
     let mut mode: Box<dyn Mode> = Box::new(Normal);
     loop {
-        mode.render(&opt, &mut common_state, &mut terminal)?;
+        mode.render(&mut common_state, &mut terminal)?;
         match events.next()? {
             Event::Key(key) => match key {
                 Key::Ctrl('c') => break,
@@ -88,9 +86,9 @@ pub fn execute(opt: Opt) -> io::Result<()> {
                         mode = new_mode;
                     }
                     if result.should_flush {
-                        common_state = common_state.flush_to_taskwarrior()?;
+                        common_state = common_state.flush_to_taskwarrior(&opt)?;
                     } else if result.should_load {
-                        common_state = CommonState::load_from_taskwarrior()?;
+                        common_state = CommonState::load_from_taskwarrior(&opt)?;
                     }
                 }
             },
@@ -104,10 +102,15 @@ pub fn execute(opt: Opt) -> io::Result<()> {
 struct CommonState {
     list_state: ListState,
     tasks: Vec<Task>,
+    // TODO: right now we represent the contents of a task on this [CommonState]
+    // but it seems like it ought to be on the task instead, since it's specifically
+    // that task's contents
+    // think about moving this onto the [Task].
+    tasks_contents: Vec<(String, String)>,
 }
 
 impl CommonState {
-    fn load_from_taskwarrior() -> io::Result<Self> {
+    fn load_from_taskwarrior(opt: &Opt) -> io::Result<Self> {
         let mut tasks = Task::get(["status:pending"].iter())?;
         tasks.sort_by(|a, b| a.estimate.partial_cmp(&b.estimate).unwrap());
 
@@ -116,10 +119,19 @@ impl CommonState {
             list_state.select(Some(0));
         }
 
-        Ok(CommonState { list_state, tasks })
+        let mut tasks_contents = Vec::with_capacity(tasks.len());
+        for task in tasks.iter() {
+            tasks_contents.push((task.uuid.clone(), task.load_contents(opt)?));
+        }
+
+        Ok(CommonState {
+            list_state,
+            tasks,
+            tasks_contents,
+        })
     }
 
-    fn flush_to_taskwarrior(self) -> io::Result<Self> {
+    fn flush_to_taskwarrior(self, opt: &Opt) -> io::Result<Self> {
         // need to calculate new_selected before into_iter()
         // because otherwise it would partially move out of self
         // and cause a compiler error
@@ -128,7 +140,7 @@ impl CommonState {
             task.estimate = Some(order as i32);
             task.save()?;
         }
-        let mut new_self = Self::load_from_taskwarrior()?;
+        let mut new_self = Self::load_from_taskwarrior(opt)?;
 
         if new_selected >= new_self.tasks.len() {
             new_selected = new_self.tasks.len() - 1;
@@ -142,6 +154,17 @@ impl CommonState {
             None => 0,
             Some(selected) => selected,
         }
+    }
+
+    fn selected_contents(&self) -> &str {
+        let selected = self.selected();
+        let selected_uuid = &self.tasks[selected].uuid;
+        for (uuid, contents) in self.tasks_contents.iter() {
+            if selected_uuid == uuid {
+                return contents;
+            }
+        }
+        panic!("selected invariant violated");
     }
 }
 
@@ -162,12 +185,7 @@ impl Default for ActionResult {
 }
 
 trait Mode {
-    fn render(
-        &self,
-        opt: &Opt,
-        common_state: &mut CommonState,
-        terminal: &mut Term,
-    ) -> io::Result<()>;
+    fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()>;
 
     fn update(
         &mut self,
@@ -182,18 +200,13 @@ trait Mode {
 struct Normal;
 
 impl Mode for Normal {
-    fn render(
-        &self,
-        opt: &Opt,
-        common_state: &mut CommonState,
-        terminal: &mut Term,
-    ) -> io::Result<()> {
-        common_render(opt, common_state, terminal, &[Modifier::DIM])
+    fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
+        common_render(common_state, terminal, &[Modifier::DIM])
     }
 
     fn update(
         &mut self,
-        opt: &Opt,
+        _opt: &Opt,
         common_state: &mut CommonState,
         key: Key,
     ) -> io::Result<ActionResult> {
@@ -248,14 +261,8 @@ impl Shift {
 }
 
 impl Mode for Shift {
-    fn render(
-        &self,
-        opt: &Opt,
-        common_state: &mut CommonState,
-        terminal: &mut Term,
-    ) -> io::Result<()> {
+    fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
         common_render(
-            opt,
             common_state,
             terminal,
             &[Modifier::DIM, Modifier::UNDERLINED],
@@ -264,7 +271,7 @@ impl Mode for Shift {
 
     fn update(
         &mut self,
-        opt: &Opt,
+        _opt: &Opt,
         common_state: &mut CommonState,
         key: Key,
     ) -> io::Result<ActionResult> {
@@ -316,19 +323,14 @@ impl Mode for Shift {
 struct Done;
 
 impl Mode for Done {
-    fn render(
-        &self,
-        opt: &Opt,
-        common_state: &mut CommonState,
-        terminal: &mut Term,
-    ) -> io::Result<()> {
+    fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
         // TODO: set up dialog-based rendering
-        common_render(opt, common_state, terminal, &[Modifier::DIM])
+        common_render(common_state, terminal, &[Modifier::DIM])
     }
 
     fn update(
         &mut self,
-        opt: &Opt,
+        _opt: &Opt,
         common_state: &mut CommonState,
         key: Key,
     ) -> io::Result<ActionResult> {
@@ -357,29 +359,10 @@ impl Mode for Done {
 }
 
 fn common_render(
-    opt: &Opt,
     common_state: &mut CommonState,
     terminal: &mut Term,
     selected_modifiers: &[Modifier],
 ) -> io::Result<()> {
-    let selected = common_state.selected();
-    let contents = {
-        let path = PathBuf::new()
-            .join(&opt.root_dir)
-            .join(&common_state.tasks[selected].uuid)
-            .with_extension(&opt.file_format);
-
-        match File::open(path) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => "".to_string(),
-            Err(e) => return Err(e),
-            Ok(mut file) => {
-                let mut buffer = String::new();
-                file.read_to_string(&mut buffer)?;
-                buffer
-            }
-        }
-    };
-
     terminal.draw(|frame| {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
@@ -404,6 +387,7 @@ fn common_render(
         frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
 
         // preview the current highlighted task's notes
+        let contents = common_state.selected_contents();
         let paragraph =
             Paragraph::new(contents).block(Block::default().title("Preview").borders(Borders::ALL));
         frame.render_widget(paragraph, layout[1])

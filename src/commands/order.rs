@@ -27,7 +27,7 @@ pub fn execute(opt: Opt) -> io::Result<()> {
     }
 
     for (i, task) in tasks.iter_mut().enumerate() {
-        task.set_estimate(Some(i as i32));
+        task.set_estimate(Some(i as i32))?;
     }
     Ok(())
 }
