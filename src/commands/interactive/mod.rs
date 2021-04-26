@@ -8,7 +8,7 @@ use tui::backend::TermionBackend;
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Modifier, Style};
 use tui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
-use tui::Terminal;
+use tui::{Frame, Terminal};
 
 use crate::opt::Opt;
 use crate::taskwarrior::Task;
@@ -201,7 +201,7 @@ struct Normal;
 
 impl Mode for Normal {
     fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
-        common_render(common_state, terminal, &[Modifier::DIM])
+        terminal.draw(|frame| common_render(frame, common_state, &[Modifier::DIM]))
     }
 
     fn update(
@@ -262,11 +262,9 @@ impl Shift {
 
 impl Mode for Shift {
     fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
-        common_render(
-            common_state,
-            terminal,
-            &[Modifier::DIM, Modifier::UNDERLINED],
-        )
+        terminal.draw(|frame| {
+            common_render(frame, common_state, &[Modifier::DIM, Modifier::UNDERLINED])
+        })
     }
 
     fn update(
@@ -324,8 +322,10 @@ struct Done;
 
 impl Mode for Done {
     fn render(&self, common_state: &mut CommonState, terminal: &mut Term) -> io::Result<()> {
-        // TODO: set up dialog-based rendering
-        common_render(common_state, terminal, &[Modifier::DIM])
+        terminal.draw(|frame| {
+            // TODO: set up dialog-based rendering
+            common_render(frame, common_state, &[Modifier::DIM])
+        })
     }
 
     fn update(
@@ -358,38 +358,36 @@ impl Mode for Done {
     }
 }
 
-fn common_render(
+fn common_render<'a>(
+    frame: &mut Frame<'a, TermionBackend<RawTerminal<Stdout>>>,
     common_state: &mut CommonState,
-    terminal: &mut Term,
     selected_modifiers: &[Modifier],
-) -> io::Result<()> {
-    terminal.draw(|frame| {
-        let layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
-            .split(frame.size());
+) {
+    let layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+        .split(frame.size());
 
-        let items: Vec<ListItem> = common_state
-            .tasks
-            .iter()
-            .map(|task| ListItem::new(task.description.as_str()))
-            .collect();
+    let items: Vec<ListItem> = common_state
+        .tasks
+        .iter()
+        .map(|task| ListItem::new(task.description.as_str()))
+        .collect();
 
-        // show all of the tasks
-        let mut highlight_style = Style::default();
-        for modifier in selected_modifiers.iter() {
-            highlight_style = highlight_style.add_modifier(*modifier);
-        }
-        let list = List::new(items)
-            .block(Block::default().title("Tasks").borders(Borders::ALL))
-            .highlight_style(highlight_style);
+    // show all of the tasks
+    let mut highlight_style = Style::default();
+    for modifier in selected_modifiers.iter() {
+        highlight_style = highlight_style.add_modifier(*modifier);
+    }
+    let list = List::new(items)
+        .block(Block::default().title("Tasks").borders(Borders::ALL))
+        .highlight_style(highlight_style);
 
-        frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
+    frame.render_stateful_widget(list, layout[0], &mut common_state.list_state);
 
-        // preview the current highlighted task's notes
-        let contents = common_state.selected_contents();
-        let paragraph =
-            Paragraph::new(contents).block(Block::default().title("Preview").borders(Borders::ALL));
-        frame.render_widget(paragraph, layout[1])
-    })
+    // preview the current highlighted task's notes
+    let contents = common_state.selected_contents();
+    let paragraph =
+        Paragraph::new(contents).block(Block::default().title("Preview").borders(Borders::ALL));
+    frame.render_widget(paragraph, layout[1])
 }
