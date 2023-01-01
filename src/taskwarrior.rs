@@ -1,6 +1,10 @@
 use std::fmt;
-use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::fs::File;
+#[cfg(feature = "eventkit")]
+use std::fs::OpenOptions;
+use std::io::{self, Read};
+#[cfg(feature = "eventkit")]
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::str;
@@ -9,6 +13,8 @@ use chrono::offset::Local;
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use serde::de;
 use serde::Deserialize;
+
+#[cfg(feature = "eventkit")]
 use shellexpand::tilde;
 
 use crate::opt::Opt;
@@ -124,6 +130,7 @@ impl Task {
         Ok(())
     }
 
+    #[cfg(feature = "eventkit")]
     /// Defines a user defined attribute (UDA) that stores the UUID of an operating system reminder
     /// onto the taskwarrior task.
     pub fn define_reminder_uda() -> io::Result<()> {
@@ -166,6 +173,7 @@ impl Task {
         }
     }
 
+    #[cfg(feature = "eventkit")]
     pub fn set_reminder_uuid(&mut self, uuid: String) -> io::Result<()> {
         Command::new("task")
             .arg(&self.uuid)
