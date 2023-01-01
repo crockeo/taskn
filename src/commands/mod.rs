@@ -1,6 +1,7 @@
 pub mod edit;
 pub mod interactive;
 pub mod order;
+#[cfg(feature = "eventkit")]
 pub mod remind;
 
 use std::io;
@@ -13,6 +14,7 @@ pub enum Command {
     Edit,
     Interactive,
     Order,
+    #[cfg(feature = "eventkit")]
     Remind,
 }
 
@@ -23,6 +25,7 @@ impl Command {
             Edit => edit::execute(opt),
             Interactive => interactive::execute(opt),
             Order => order::execute(opt),
+            #[cfg(feature = "eventkit")]
             Remind => remind::execute(opt),
         }
     }
@@ -37,7 +40,8 @@ impl FromStr for Command {
             "edit" => Ok(Edit),
             "interactive" => Ok(Interactive),
             "order" => Ok(Order),
-            "remind" => Ok(Remind),
+        #[cfg(feature = "eventkit")]
+        "remind" => Ok(Remind),
             _ => Err(format!("failed to parse Command from '{}'", s)),
         }
     }
